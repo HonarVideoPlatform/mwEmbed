@@ -110,13 +110,22 @@
 					_this.layoutBuilder.closeAlert();
 				}
 			});
-            $(this).bind('firstPlay', this.parseTextTracks());
+            this.addBindings();
+		},
+        addBindings: function(){
+            var _this = this;
+            this.bindHelper('firstPlay', function(){
+                _this.parseTracks();
+            });
+            this.bindHelper('switchAudioTrack', function (e, data) {
+                _this.switchAudioTrack(data.index);
+            });
             this.bindHelper('liveOnline', function(){
-                if( this.isLive() && !this.isDVR() ) {
-                    this.resetSrc = true;
+                if( _this.isLive() && !_this.isDVR() ) {
+                    _this.resetSrc = true;
                 }
             });
-		},
+        },
 		/**
 		 * Updates the supported features given the "type of player"
 		 */
@@ -145,40 +154,6 @@
 		supportsVolumeControl: function () {
 			return  !( mw.isIpad() || mw.isAndroid() || mw.isMobileChrome() || this.useNativePlayerControls() );
 		},
-		/**
-		 * Adds an HTML screen and moves the video tag off screen, works around some iPhone bugs
-		 */
-		addPlayScreenWithNativeOffScreen: function () {
-			if (!mw.isIphone()) {
-				return;
-			}
-			var _this = this;
-			// Hide the player offscreen:
-			if (!this.inline) {
-				this.hidePlayerOffScreen();
-				this.keepPlayerOffScreenFlag = true;
-			}
-
-
-			// Add an image poster:
-			var posterSrc = ( this.poster ) ? this.poster :
-				mw.getConfig('EmbedPlayer.BlackPixel');
-			// Check if the poster is already present:
-			if ($(this).find('.playerPoster').length) {
-				$(this).find('.playerPoster').attr('src', posterSrc);
-			} else {
-				$(this).append(
-					$('<img />')
-						.attr('src', posterSrc)
-						.addClass('playerPoster')
-						.load(function () {
-							_this.applyIntrinsicAspect();
-							$('.playerPoster').attr('alt', _this.posterAlt);
-						})
-				);
-			}
-			$(this).show();
-		},
 		changeMediaCallback: function (callback) {
 			// Check if we have source
 			if (!this.getSource()) {
@@ -194,10 +169,9 @@
 					// switch source calls .play() that some browsers require.
 					// to reflect source switches. Playlists handle pause state so no need to pause in playlist
 					_this.ignoreNextNativeEvent = true;
-					if ( !_this.playlist ){
-						_this.pause();
+					if ( !_this.isPlaying() ) {
+						_this.updatePosterHTML();
 					}
-					_this.updatePosterHTML();
 				}
 				callback();
 			});
@@ -304,8 +278,10 @@
 				return;
 			}
 			// Update the player source ( if needed )
-			if ($(vid).attr('src') != this.getSrc(this.currentTime) && !mw.isIE()) {
-				$(vid).attr('src', this.getSrc(this.currentTime));
+			if (!this.skipUpdateSource) {
+				if ( $( vid ).attr( 'src' ) != this.getSrc( this.currentTime ) && !mw.isIE() ) {
+					$( vid ).attr( 'src' , this.getSrc( this.currentTime ) );
+				}
 			}
 
 			if (this.muted) {
@@ -685,12 +661,6 @@
 						}
 					});
 
-					$(vid).bind('pause' + switchBindPostfix, function () {
-						_this.log("playerSwitchSource> received pause during switching, issue play to continue source switching!")
-						$(vid).unbind('pause' + switchBindPostfix);
-						vid.play();
-					});
-
 					var handleSwitchCallback = function () {
 						//Clear pause binding on switch exit in case it wasn't triggered.
 						$(vid).unbind('pause' + switchBindPostfix);
@@ -740,11 +710,6 @@
 							// issue the doneCallback
 							doneCallback();
 
-							// Support loop for older iOS
-							// Temporarily disabled pending more testing or refactor into a better place.
-							//if ( _this.loop ) {
-							//	vid.play();
-							//}
 							return false;
 						});
 
@@ -774,7 +739,14 @@
 					}
 
 					// issue the play request:
-					vid.play();
+					if (_this.isInSequence()){
+						vid.play();
+					}else{
+						if ( !( _this.playlist && mw.isAndroid() ) ){
+							_this.play();
+						}
+
+					}
 					if (mw.isMobileDevice()) {
 						setTimeout(function () {
 							handleSwitchCallback();
@@ -813,8 +785,9 @@
 				return;
 			}
 			// Remove any poster div ( that would overlay the player )
-			if (!this.isAudioPlayer && !mw.getConfig("EmbedPlayer.KeepPoster") === true)
-				$(this).find('.playerPoster').remove();
+			if (!this.isAudioPlayer && !mw.getConfig("EmbedPlayer.KeepPoster") === true) {
+                this.removePoster();
+            }
 			// Restore video pos before calling sync syze
 			$(vid).css({
 				'left': '0px',
@@ -855,9 +828,18 @@
 					if (_this.getPlayerElement() && _this.getPlayerElement().play) {
 						_this.log(" issue native play call:");
 						// make sure the source is set:
-						if ( $(vid).attr('src') != _this.getSrc() || _this.resetSrc ) {
-							$(vid).attr('src', _this.getSrc());
-                            _this.resetSrc = false;
+						if (!_this.skipUpdateSource) {
+							if ( $( vid ).attr( 'src' ) != _this.getSrc() || _this.resetSrc ) {
+								$( vid ).attr( 'src' , _this.getSrc() );
+								//trigger play again for iPad and El Capitan
+								setTimeout( function () {
+									if ( !_this.playing ) {
+										vid.play();
+										_this.parseTracks();
+									}
+								} , 300 );
+								_this.resetSrc = false;
+							}
 						}
 						_this.hideSpinnerOncePlaying();
 						// make sure the video tag is displayed:
@@ -1098,7 +1080,7 @@
 							if ( (Math.abs( _this.currentSeekTargetTime - _this.getPlayerElement().currentTime ) > 2) &&
 								callbackCount <= 15 ) {
 								setTimeout( function () {
-									timeupdateCallback( callbackCount++ );
+									timeupdateCallback( ++callbackCount );
 								}, 100 );
 							} else {
 								if ( callbackCount > 15 ) {
@@ -1133,9 +1115,14 @@
 		 * Handle the native durationchange event
 		 */
 		_ondurationchange: function (event, data) {
-			if (this.playerElement && !isNaN(this.playerElement.duration) && isFinite(this.playerElement.duration)) {
+			if ( this.playerElement && !isNaN(this.playerElement.duration) && isFinite(this.playerElement.duration) ) {
 				this.setDuration(this.getPlayerElement().duration);
+                return;
 			}
+            // fix for ipad air 2 and El Capitan that sends 0 as duration for new live streams (webcast)
+            if ( this.playerElement && !isFinite(this.playerElement.duration) && this.isLive() && !this.isDVR() ) {
+                this.setDuration(this.getPlayerElement().duration); //set duration to infinity in order to pass updatePlayheadStatus (embedPlayer)
+            }
 		},
 		/**
 		 * Handle the native paused event
@@ -1157,10 +1144,6 @@
 				timeSincePlay > mw.getConfig('EmbedPlayer.MonitorRate')
 				) {
 				_this.parent_pause();
-				// in iphone when we're back from the native payer we need to show the image with the play button
-				if (mw.isIphone()) {
-					_this.updatePosterHTML();
-				}
 			} else {
 				// try to continue playback:
 				this.getPlayerElement().play();
@@ -1187,6 +1170,9 @@
 			}
 			// Set firstEmbedPlay state to false to avoid initial play invocation :
 			this.ignoreNextNativeEvent = false;
+			if (mw.isIphone()){
+				this.getInterface().removeClass("player-out");
+			}
 			// re-start the monitor:
 			this.monitor();
 		},
@@ -1200,7 +1186,6 @@
 		 */
 		_onloadedmetadata: function () {
 			this.getPlayerElement();
-
 			// only update duration if we don't have one: ( some browsers give bad duration )
 			// like Android 4 default browser
 			if (!this.duration
@@ -1342,10 +1327,13 @@
 		},
 
 		backToLive: function () {
-			this.triggerHelper('movingBackToLive');
+            var _this = this;
 			var vid = this.getPlayerElement();
 			vid.load();
 			vid.play();
+            setTimeout( function() {
+                _this.triggerHelper('movingBackToLive'); //for some reason on Mac the isLive client response is a little bit delayed, so in order to get update liveUI properly, we need to delay "movingBackToLive" helper
+            }, 1000 );
 		},
 		isVideoSiblingEnabled: function () {
 			if (mw.isIphone() || mw.isAndroid2() || mw.isWindowsPhone() || mw.isAndroid40() || mw.isMobileChrome()
@@ -1385,21 +1373,32 @@
 		setInline: function ( state ) {
 			this.getPlayerElement().attr('webkit-playsinline', '');
 		},
-        parseTextTracks: function(){
+        parseTracks: function(){
             var vid = this.getPlayerElement();
+            this.parseAudioTracks(vid, 0); //0 is for a setTimer counter. Try to catch audioTracks, give up after 5 seconds
+            if(this.isLive() && !this.isDVR()) {
+                //right now we parse metadata textTrack in order to read id3Tag only for live without DVR
+                this.parseTextTracks(vid, 0); //0 is for a setTimer counter. Try to catch textTracks.kind === "metadata, give up after 10 seconds
+            }
+        },
+        parseTextTracks: function(vid, counter){
             var _this = this;
-            var interval = setInterval(function() {
-                for (var i = 0; i < vid.textTracks.length; i++) {
-                    //TODO: add audio support
-
-                    //if Live + No DVR add id3 tags support
-                    if (vid.textTracks[i].kind === "metadata" && _this.isLive() && !_this.isDVR()) {
-                        _this.id3Tag(vid.textTracks[i]);
-                        clearInterval(interval);
-                        vid.textTracks[i].mode = "hidden";
+            setTimeout(function() {
+                if( vid.textTracks.length > 0 ) {
+                    for (var i = 0; i < vid.textTracks.length; i++) {
+                        if (vid.textTracks[i].kind === "metadata") {
+                            //add id3 tags support (for now only if Live + no DVR)
+                            _this.id3Tag(vid.textTracks[i]);
+                            vid.textTracks[i].mode = "hidden";
+                        }
+                    }
+                }else{
+                    //try to catch textTracks.kind === "metadata, give up after 10 seconds
+                    if( counter < 10 ){
+                        _this.parseTextTracks(vid, ++counter);
                     }
                 }
-            }, 500);
+            }, 1000);
         },
         id3Tag: function(metadataTrack){
             var _this = this;
@@ -1412,6 +1411,36 @@
                     mw.log("Native player :: id3Tag :: ERROR :: "+e);
                 }
             }, false);
+        },
+        parseAudioTracks: function(vid, counter){
+            var _this = this;
+            setTimeout (function() {
+                if( vid.audioTracks && vid.audioTracks.length > 0 ) {
+                    var data ={'languages':[]};
+                    for (var i = 0; i < vid.audioTracks.length; i++) {
+                        if( vid.audioTracks[i].label !== "" ) {
+                            var lang = {};
+                            lang.index = i;
+                            lang.label = vid.audioTracks[i].label;
+                            data.languages.push(lang);
+                        }
+                    }
+                    if( data.languages.length > 0 ) {
+                        _this.triggerHelper('audioTracksReceived', data);
+                    }
+                }else{
+                    //try to catch audioTracks, give up after 5 seconds
+                    if( counter < 5 ){
+                        _this.parseAudioTracks(vid, ++counter);
+                    }
+                }
+            }, 1000);
+        },
+        switchAudioTrack: function(audioTrackIndex){
+            this.getPlayerElement().audioTracks[audioTrackIndex].enabled = true;
+        },
+        getCurrentBufferLength: function(){
+            return parseInt(this.playerElement.buffered.end(0) - this.playerElement.currentTime); //return buffer length in seconds
         }
 	};
 })(mediaWiki, jQuery);

@@ -8,7 +8,7 @@
 	var userAgent = navigator.userAgent;
 
 	mw.isMobileDevice = function () {
-		return ( mw.isIphone() || mw.isIpod() || mw.isIpad() || mw.isAndroid() || mw.isWindowsPhone() || mw.getConfig("EmbedPlayer.ForceNativeComponent") === true )
+		return ( mw.isIphone() || mw.isIpod() || mw.isIpad() || mw.isAndroid() || mw.isWindowsPhone() || mw.getConfig("EmbedPlayer.ForceNativeComponent") === true || mw.getConfig("EmbedPlayer.SimulateMobile") === true )
 	};
 	mw.isNativeApp = function () {
 		return mw.getConfig("EmbedPlayer.ForceNativeComponent");
@@ -117,7 +117,7 @@
 			)
 	};
 	mw.isWindowsPhone = function () {
-		return (  userAgent.indexOf('Windows Phone') != -1 || (userAgent.indexOf('Windows') != -1 && userAgent.indexOf('Touch') != -1  && userAgent.indexOf('Tablet') === -1));
+		return userAgent.indexOf('Windows Phone') != -1 ;
 	};
 	mw.isIOS = function () {
 		return ( mw.isIphone() || mw.isIpod() || mw.isIpad() );

@@ -11,6 +11,10 @@
 		
 		contentDuration: 0,
 
+		isSafeEnviornment: function(){
+			return !this.embedPlayer.isMobileSkin();
+		},
+
 		setup: function(){
 			var _this = this;
 			this.bind( 'durationChange', function(event, duration){
@@ -29,13 +33,15 @@
 		},
 		updateUI: function( duration ){
 			var formatTime = mw.seconds2npt( parseFloat( duration ) )
-			this.getComponent().text( this.getConfig('prefix') + formatTime );
+			var duration = this.getConfig('prefix') !== undefined ? this.getConfig('prefix') + formatTime : formatTime;
+			this.getComponent().text( duration );
 		},
 		getComponent: function() {
 			if( !this.$el ) {
+				var duration = this.getConfig('prefix') !== undefined ? this.getConfig('prefix') + '0:00' : '0:00';
 				this.$el = $( '<div />' )
 							.addClass ( "timers" + this.getCssClass() )
-							.text( this.getConfig('prefix') + '0:00' );
+							.text( duration );
 			}
 			return this.$el;
 		},

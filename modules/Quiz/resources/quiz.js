@@ -1,3 +1,8 @@
+/**
+ * Created by mark.feder Kaltura.
+ *
+ * */
+
 (function (mw, $) {
     "use strict";
     $.cpObject = {};
@@ -15,114 +20,175 @@
             usePreviewPlayer: false,
             previewPlayerEnabled: false
         },
-        entryData: null,
-        reviewMode: false,
-        showCorrectKeyOnAnswer: false,
-        showResultOnAnswer: false,
+
         isSeekingIVQ:false,
-        inFullScreen : false,
+        inFullScreen:false,
         selectedAnswer:null,
+        seekToQuestionTime:null,
+        multiStreamWelcomeSkip:false,
+        IVQVer:'IVQ-2.41.rc2',
 
         setup: function () {
             var _this = this;
-            var embedPlayer = this.getPlayer();
+            var embedPlayer = _this.getPlayer();
+            embedPlayer.disableComponentsHover();
+            mw.log("Quiz: " + _this.IVQVer);
+            this.bind('onChangeStream', function () {
+                mw.log("Quiz: multistream On");
+                _this.multiStreamWelcomeSkip = true;
+            });
 
-            _this.KIVQModule = new mw.KIVQModule(embedPlayer,_this);
-            _this.KIVQModule.setupQuiz(embedPlayer);
-            _this.KIVQScreenTemplate = new mw.KIVQScreenTemplate(embedPlayer);
+            embedPlayer.addJsListener( 'kdpReady', function(){
 
-            this.addBindings();
+                _this.KIVQModule = new mw.KIVQModule(embedPlayer, _this);
+                _this.KIVQModule.isKPlaylist = (typeof (embedPlayer.playlist) === "undefined" ) ? false : true;
+
+                if (embedPlayer.kalturaPlayerMetaData.capabilities === "quiz.quiz"){
+                    if (embedPlayer.autoplay) {
+                        embedPlayer.autoplay = false;
+                    }
+
+                    _this.KIVQModule.setupQuiz();
+                    _this.KIVQScreenTemplate = new mw.KIVQScreenTemplate(embedPlayer);
+
+                    if(_this.KIVQModule.isKPlaylist){
+                        _this.KIVQModule.unloadQuizPlugin(embedPlayer);
+                        embedPlayer.stop();
+                    }else{
+                        if(!_this.multiStreamWelcomeSkip){
+                            embedPlayer.disablePlayControls();
+                        }
+                        embedPlayer.addPlayerSpinner();
+                    };
+
+                    _this.KIVQModule.checkCuepointsReady(function(){
+
+                        _this.addBindings();
+
+                        if(_this.KIVQModule.isKPlaylist){
+                            embedPlayer.stop();//
+                            _this.enablePlayDuringScreen = false;
+                            _this.ssWelcome();
+                            mw.log("Quiz: playlistWelcome");
+                        };
+                        embedPlayer.hideSpinner();
+                        embedPlayer.enablePlayControls();
+                    });
+
+                    mw.log("Quiz: Quiz Loading..");
+
+                    try {
+                        var cssLink = "modules/Quiz/resources/css/quizFonts.css";
+                        cssLink = cssLink.toLowerCase().indexOf("http") === 0 ? cssLink : kWidget.getPath() + cssLink;
+                        if (!$("link[href=cssLink]").length){
+                            $('head', window.parent.document).append('<link type="text/css" rel="stylesheet" href="' + cssLink + '"/>');
+                        }
+                    }
+                    catch(err) {
+                        mw.log("Quiz: Err loading fonts :"+err.message);
+                    }
+                }
+                else{
+                    _this.KIVQModule.unloadQuizPlugin(embedPlayer);
+                    embedPlayer.enablePlayControls();
+                    if(_this.KIVQModule.isKPlaylist){
+                        _this.embedPlayer.setKDPAttribute('playlistAPI','autoContinue',true);
+                    };
+                 }
+            });
         },
         addBindings: function () {
             var _this = this;
             var embedPlayer = this.getPlayer();
+            mw.log("Quiz: Add Bindings ");
+            if (!_this.multiStreamWelcomeSkip){
+                this.bind('prePlayAction'+_this.KIVQModule.bindPostfix, function (e, data) {
+                    mw.log("Quiz: Bind PrePlay");
+                    if(!_this.KIVQModule.isKPlaylist){
+                        if(_this.getPlayer().firstPlay) {
+                            mw.log("Quiz: Welcome");
+                            data.allowPlayback = false;
+                            _this.enablePlayDuringScreen = false;
+                            _this.ssWelcome();
 
-            this.bind('layoutBuildDone', function () {
-                var entryRequest = {
-                    'service': 'baseEntry',
-                    'action': 'get',
-                    'entryId': embedPlayer.kentryid
-                };
-                _this.getKClient().doRequest(entryRequest, function (data) {
-                    if (!_this.KIVQModule.checkApiResponse('Get baseEntry err -->',data)){
-                        return false;
-                    }
-                    _this.entryData = data;
+                        }else{
+                            _this.KIVQModule.showQuizOnScrubber();
+                            mw.log("Quiz: preplay Show Quiz on Scrubber");
+                        };
+                    };
+                    _this.unbind('prePlayAction' + _this.KIVQModule.bindPostfix);
                 });
-            });
-
-            this.bind('KalturaSupport_CuePointReached', function (e, cuePointObj) {
+            }else{
+                this.bind('prePlayAction'+_this.KIVQModule.bindPostfix, function (e, data) {
+                    _this.KIVQModule.showQuizOnScrubber();
+                });
+                _this.KIVQModule.continuePlay();
+            };
+            this.bind('KalturaSupport_CuePointReached'+_this.KIVQModule.bindPostfix, function (e, cuePointObj) {
                 if(!_this.isSeekingIVQ){
-                    _this.KIVQModule.cuePointReachedHandler(e, cuePointObj)
+                    if ((_this.seekToQuestionTime ===  cuePointObj.cuePoint.startTime)
+                        || (_this.seekToQuestionTime === null))
+                         {
+                        _this.KIVQModule.cuePointReachedHandler(e, cuePointObj);
+                        _this.seekToQuestionTime = null;
+                        mw.log("Quiz: CuePoint Reached time: " + cuePointObj.cuePoint.startTime);
+                    }
                 }
                 if(_this.enablePlayDuringScreen) {
                     _this.enablePlayDuringScreen = false;
                 }
             });
 
-            this.bind('prePlayAction', function (e, data) {
-
-                if(_this.getPlayer().firstPlay && !_this.firstPlay){
-                    data.allowPlayback = false;
-                    _this.firstPlay = true;
-                    _this.enablePlayDuringScreen = false;
-                    _this.KIVQModule.checkQKDPReady(function(){
-                        _this.ssWelcome();
-                        _this.unbind('prePlayAction');
-                    });
-                };
+            embedPlayer.bindHelper('seeked'+_this.KIVQModule.bindPostfix, function () {
+               _this.isSeekingIVQ = false;
+                mw.log("Quiz: Seeked");
             });
 
-            this.bind('seeked', function () {
-                setTimeout(function () {
-                    _this.isSeekingIVQ = false;}, 0);
-            });
-            this.bind('seeking', function () {
+            embedPlayer.bindHelper('seeking'+_this.KIVQModule.bindPostfix, function () {
                 _this.isSeekingIVQ = true;
+                mw.log("Quiz: Seeking.. ");
             });
 
-            embedPlayer.addJsListener( 'kdpReady', function(){
-                _this.KIVQModule.isQKDPReady = true;
-                if (embedPlayer.autoplay) {
-                    embedPlayer.autoplay = false;
-                }
-                embedPlayer.removeJsListener( 'kdpReady');
-
-            });
-            embedPlayer.addJsListener( 'playerPlayEnd', function(){
+            embedPlayer.bindHelper('playbackComplete'+_this.KIVQModule.bindPostfix, function(){
                 _this.KIVQModule.quizEndScenario();
+                mw.log("Quiz: playbackComplete");
             });
 
-            embedPlayer.bindHelper('onOpenFullScreen', function() {
+            embedPlayer.bindHelper('onOpenFullScreen'+_this.KIVQModule.bindPostfix, function() {
                 _this.inFullScreen = true;
                 if (!_this.isScreenVisible()) {
-                   _this.KIVQModule.showQuizOnScrubber();
-               }
+                    _this.KIVQModule.showQuizOnScrubber();
+                }
             });
-            embedPlayer.bindHelper('onCloseFullScreen', function() {
+            embedPlayer.bindHelper('onCloseFullScreen'+_this.KIVQModule.bindPostfix, function() {
                 _this.inFullScreen = false;
                 if (!_this.isScreenVisible()) {
                     _this.KIVQModule.showQuizOnScrubber();
                 }
             });
-            this.bind( 'preShowScreen', function( event, screenName ){
+            embedPlayer.bindHelper( 'preShowScreen'+_this.KIVQModule.bindPostfix, function( event, screenName ){
                 if ( !embedPlayer.isInSequence() ){
-                        embedPlayer.disablePlayControls();
+                    embedPlayer.disablePlayControls();
+                    embedPlayer.triggerHelper( 'onDisableKeyboardBinding');
                 }
-                    _this.KIVQModule.hideQuizOnScrubber();
+                _this.KIVQModule.hideQuizOnScrubber();
             });
-            this.bind( 'preHideScreen', function( event, screenName ){
-                if (screenName != 'quiz'){
+            embedPlayer.bindHelper( 'preHideScreen'+_this.KIVQModule.bindPostfix, function( event, screenName ){
+                if (screenName != 'quiz' && !_this.getPlayer().firstPlay){
                     _this.KIVQModule.showQuizOnScrubber();
                 }
             });
-            this.bind('onChangeMediaDone', function(){
-                $.cpObject = {};
-                $.quizParams = {};
-                _this.KIVQModule.hideQuizOnScrubber();
-                _this.KIVQModule.setupQuiz(embedPlayer);
+            embedPlayer.bindHelper('hideScreen'+_this.KIVQModule.bindPostfix, function(event, screenName){
+                if(screenName === 'quiz'){
+                    if (!_this.embedPlayer._playContorls){
+                        _this.KIVQModule.showQuizOnScrubber();
+                        embedPlayer.enablePlayControls();
+                        mw.log("Quiz: Continue Play Hide Screen");
+                        embedPlayer.play();
+                    };
+                }
             });
-        },
+          },
         getKClient: function () {
             if (!this.kClient) {
                 this.kClient = mw.kApiGetPartnerClient(this.embedPlayer.kwidgetid);
@@ -141,19 +207,15 @@
 
         showScreen:function(){
             this.embedPlayer.pause();
-            this.embedPlayer.triggerHelper( 'onDisableKeyboardBinding');
             this._super();
         },
+
         ssWelcome: function () {
             var _this = this;
             _this.ivqShowScreen();
             _this.KIVQScreenTemplate.tmplWelcome();
 
             $(".welcome").html(gM('mwe-quiz-welcome'));
-            $(".confirm-box").html(gM('mwe-quiz-plsWait'));
-
-            _this.KIVQModule.checkCuepointsReady(function(){
-
                 if ($.quizParams.allowDownload ) {
                     $(".pdf-download").prepend('<div class="pdf-download-img">' +
                     '</div><div class="pdf-download-txt">'
@@ -161,12 +223,10 @@
 
                     $(".pdf-download-img").on('click',function(){
                         _this.KIVQModule.getIvqPDF(_this.embedPlayer.kentryid);
-                        $(".pdf-download-img").off();
                     });
-
                 }
                 $.grep($.quizParams.uiAttributes, function (e) {
-                    switch(e.key){
+                     switch(e.key){
                         case 'welcomeMessage':
                             $(".welcomeMessage").html(e.value);
                             break;
@@ -178,11 +238,10 @@
                     }
                 });
 
-                $(".confirm-box").html(gM('mwe-quiz-continue'))
-                    .on('click', function () {
-                        _this.KIVQModule.checkIfDone(-1);
-                    });
-            });
+            $(".confirm-box").html(gM('mwe-quiz-continue')).show()
+                .on('click', function () {
+                    _this.KIVQModule.checkIfDone(-1);
+                });
         },
 
         ssAlmostDone: function (unAnsweredArr) {
@@ -190,39 +249,35 @@
 
             _this.ivqShowScreen();
             _this.KIVQScreenTemplate.tmplAlmostDone();
-            if(unAnsweredArr.length < 8){
-                $(".title-text").addClass("padding17");
-            }
 
             $(".title-text").html(gM('mwe-quiz-almostDone'));
-            $(".sub-text").html(gM('mwe-quiz-remainUnAnswered') + '</br>' + gM('mwe-quiz-pressRelevatToAnswer'));
-            $(".confirm-box").html(gM('mwe-quiz-okGotIt'));
+            $(".sub-text").html(gM('mwe-quiz-remainUnAnswered') + '</br>' + gM('mwe-quiz-pressRelevatToAnswer'))
+            $(".confirm-box").html(gM('mwe-quiz-okGotIt'))
 
             $(document).off('click','.confirm-box')
                 .on('click', '.confirm-box', function () {
-                   _this.embedPlayer.seek(0,true);
-                   _this.KIVQModule.continuePlay();
+                    _this.embedPlayer.stopPlayAfterSeek = false;
+                    _this.embedPlayer.seek(0,false);
+                    _this.ivqHideScreen();
                 });
-           _this.KIVQModule.displayHex(_this.KIVQModule.setHexContainerPos("current"),unAnsweredArr);
         },
 
         ssDisplayHint: function(questionNr){
             var _this = this;
             var embedPlayer = _this.getPlayer();
-            $(".header-container").prepend("<div class ='hint-why-box'>"+ gM('mwe-quiz-hint') +"</div>")
+            $("<div>"+ gM('mwe-quiz-hint') +"</div>").prependTo(".header-container").addClass('hint-why-box')
                 .on('click', function () {
                     _this.KIVQScreenTemplate.tmplHint();
                     $(".header-container").addClass('close-button')
                         .on('click', function () {
                             _this.ssSetCurrentQuestion(questionNr,true);
-
                         });
                     $(".hint-container").append($.cpObject.cpArray[questionNr].hintText);
                 })
         },
         ssDisplayWhy: function (questionNr) {
             var _this = this;
-            $(".header-container").prepend("<div class ='hint-why-box'>"+ gM('mwe-quiz-why') +"</div>")
+            $("<div>"+ gM('mwe-quiz-why') +"</div>").prependTo(".header-container").addClass('hint-why-box')
                 .on('click', function () {
                     _this.KIVQScreenTemplate.tmplWhy();
                     $(".header-container").addClass('close-button')
@@ -242,11 +297,15 @@
             if ($.cpObject.cpArray[questionNr].hintText){
                 _this.ssDisplayHint(questionNr)
             }
+
+            if (cPo.question.length < 68){
+                $(".display-question").addClass("padding7");
+            }
             $(".display-question").text(cPo.question);
             $.each(cPo.answeres, function (key, value) {
                 var div= $("<div class ='single-answer-box-bk'>"
-                    + "<div class ='single-answer-box' id="
-                    + key + "><p></p></div></div>");
+                + "<div class ='single-answer-box-txt' id="
+                + key + "><p></p></div></div>");
                 div.find('p').text(value);
                 div.appendTo('.answers-container');
             });
@@ -261,15 +320,14 @@
         },
         ssAllCompleted: function () {
             var _this = this;
-            _this.reviewMode = true;
+            _this.KIVQModule.reviewMode = true;
             _this.ivqShowScreen();
             _this.KIVQScreenTemplate.tmplAllCompleted();
 
-            $(".title-text").addClass('padding20').html(gM('mwe-quiz-completed'));
-
-            $(".sub-text").addClass('margin-top4').html(gM('mwe-quiz-TakeAMoment') + '<strong> '+ gM('mwe-quiz-review').toLowerCase() +' </strong>'
-                    + gM('mwe-quiz-yourAnswers') + '</br><strong> '+ gM('mwe-quiz-or') +' </strong>'
-                    + gM('mwe-quiz-goAhead')+ '<strong> '+ gM('mwe-quiz-submit').toLowerCase() +' </strong>'
+            $(".title-text").html(gM('mwe-quiz-completed'));
+            $(".sub-text").html(gM('mwe-quiz-TakeAMoment') + '<strong> '+ gM('mwe-quiz-review').toLowerCase() +' </strong>'
+                + gM('mwe-quiz-yourAnswers') + '</br><strong> '+ gM('mwe-quiz-or') +' </strong>'
+                + gM('mwe-quiz-goAhead')+ '<strong> '+ gM('mwe-quiz-submit').toLowerCase() +' </strong>'
             );
 
             $(".review-button").html(gM('mwe-quiz-review'))
@@ -280,30 +338,34 @@
 
             $(".submit-button").html(gM('mwe-quiz-submit'))
                 .on('click', function () {
-                $(this).off('click');
-                $(this).html(gM('mwe-quiz-plsWait'));
-                _this.KIVQModule.setSubmitQuiz();
-            });
+                    $(this).off('click');
+                    $(this).html(gM('mwe-quiz-plsWait'));
+                    _this.KIVQModule.setSubmitQuiz();
+                });
         },
-
         ssSubmitted: function (score) {
             var _this = this,cpArray = $.cpObject.cpArray;
             _this.ivqShowScreen();
             _this.KIVQScreenTemplate.tmplSubmitted();
 
             $(".title-text").html(gM('mwe-quiz-Submitted'));
-            if(cpArray.length <= 6){
-                $(".title-text").addClass("padding14");
-            }
+
             if ($.quizParams.showGradeAfterSubmission){
                 if (!$.quizParams.showCorrectAfterSubmission) {
-                    $(".title-text").addClass("padding35");
+                    $(".title-text").addClass("padding23");
                     $(".sub-text").html(gM('mwe-quiz-completedScore')
-                        + '<span class="scoreBig">' + score + '</span>' + ' %');
+                    + '<span class="scoreBig">' + score + '</span>' + ' %');
+                    $(".bottomContainer").addClass("paddingB20");
                 } else {
+                    if(cpArray.length <= 6){
+                        $(".title-text").addClass("padding10");
+                    }else{
+                        $(".title-text").addClass("padding3");
+                    }
+
                     $(".sub-text").html(gM('mwe-quiz-completedScore')
-                        + '<span class="scoreBig">' + score + '</span>' + ' %' + '</br>'
-                        + gM('mwe-quiz-reviewSubmit'));
+                    + '<span class="scoreBig">' + score + '</span>' + ' %' + '</br>'
+                    + gM('mwe-quiz-reviewSubmit'));
 
                     _this.KIVQModule.displayHex(_this.KIVQModule.setHexContainerPos("current"),cpArray);
 
@@ -311,30 +373,39 @@
                         .on('click', '.q-box', function () {
                             _this.KIVQScreenTemplate.tmplReviewAnswer();
                             _this.ssReviewAnswer(parseInt($(this).attr('id')));
-                    });
+                        });
                     $(document).off('click','.q-box-false')
                         .on('click', '.q-box-false', function () {
                             _this.KIVQScreenTemplate.tmplReviewAnswer();
                             _this.ssReviewAnswer(parseInt($(this).attr('id')));
-                    });
+                        });
                 }
             }else{
-                $(".title-text").addClass("padding35");
+                $(".title-text").addClass("padding23");
                 $(".sub-text").html(gM('mwe-quiz-completedQuiz'));
+                $(".bottomContainer").addClass("paddingB20");
             }
             $(document).off('click','.confirm-box')
             $(".confirm-box").html(gM('mwe-quiz-done'))
                 .on('click', function () {
-                    _this.KIVQScreenTemplate.tmplThankYou();
-                    $(".title-text").html(gM('mwe-quiz-thankYou'));
-                    $(this).delay(1000).fadeIn(function () {
-                        _this.KIVQModule.quizEndFlow = false;
-                        if (_this.embedPlayer.getPlayerElementTime() > 0){
-                            _this.ivqHideScreen();
-                            _this.embedPlayer.seek(0 , false);
-                        }
+                    if (mw.isMobileDevice() || _this.embedPlayer.getPlayerElementTime() === 0 ){
                         _this.KIVQModule.continuePlay();
-                    });
+                    }else {
+                        _this.KIVQScreenTemplate.tmplThankYou();
+                        $(".title-text").html(gM('mwe-quiz-thankYou'));
+                        $(this).delay(1000).fadeIn(function () {
+                            _this.KIVQModule.quizEndFlow = false;
+                            if (_this.embedPlayer.getPlayerElementTime() > 0) {
+                                _this.ivqHideScreen();
+                                _this.embedPlayer.seek(0, false);
+                            }
+                            _this.KIVQModule.continuePlay();
+                        });
+                    }
+                    if(_this.KIVQModule.isKPlaylist){
+                        mw.log("Quiz: Playlist Auto Continue After Submitted");
+                        _this.embedPlayer.setKDPAttribute('playlistAPI','autoContinue',true);
+                    }
                 });
         },
         ssReviewAnswer: function (selectedQuestion) {
@@ -344,7 +415,8 @@
                 _this.ssDisplayWhy(selectedQuestion)
             }
             $(".reviewAnswerNr").append(_this.KIVQModule.i2q(selectedQuestion));
-            $(".theQuestion").html(gM('mwe-quiz-q') + "  " + $.cpObject.cpArray[selectedQuestion].question);
+            //$(".theQuestion").html(gM('mwe-quiz-q') + "  " + $.cpObject.cpArray[selectedQuestion].question);
+            $(".theQuestion").html($.cpObject.cpArray[selectedQuestion].question);
             $(".yourAnswerText").html(gM('mwe-quiz-yourAnswer'));
             $(".yourAnswer").html($.cpObject.cpArray[selectedQuestion].answeres[$.cpObject.cpArray[selectedQuestion].selectedAnswer]);
             if (!$.cpObject.cpArray[selectedQuestion].isCorrect) {
@@ -368,29 +440,28 @@
         },
         showSelectedQuestion:function(questionNr){
             var _this = this;
-            $('.single-answer-box#'+_this.selectedAnswer +'')
+            $('.single-answer-box-txt#'+_this.selectedAnswer +'')
                 .parent().addClass("wide")
                 .addClass('single-answer-box-bk-apply')
-                .children().removeClass('single-answer-box')
+                .children().removeClass('single-answer-box-txt')
                 .addClass(function(){
-                    $(this).addClass('single-answer-box-small')
+                    $(this).addClass('single-answer-box-txt-wide')
                         .after($('<div></div>')
-                            .addClass("single-answer-box-apply")
+                            .addClass("single-answer-box-apply qContinue")
                             .text(gM('mwe-quiz-continue'))
                     )
                 });
-            _this.selectedAnswer = null;
         },
         showAnswered: function (cPo, questionNr) {
             var _this = this;
             $.each(cPo.answeres, function (key, value) {
                 if (key == $.cpObject.cpArray[questionNr].selectedAnswer) {
-                    $('#' + key).parent().addClass("wide single-answer-box-bk-applied disable");
-                    $('#' + key).removeClass('single-answer-box')
+                    $('#' + key).parent().addClass("wide single-answer-box-bk-apply disable");
+                    $('#' + key).removeClass('single-answer-box-txt')
                         .addClass(function(){
-                            $(this).addClass('single-answer-box-small')
+                            $(this).addClass('single-answer-box-txt-wide ')
                                 .after($('<div></div>')
-                                    .addClass("single-answer-box-apply disable")
+                                    .addClass("single-answer-box-apply qApplied disable")
                                     .text(gM('mwe-quiz-applied'))
                             )
                         });
@@ -402,67 +473,63 @@
         },
         _selectAnswerConroller: function (cPo, questionNr) {
             var _this = this;
-            if (_this.KIVQModule.quizSubmitted) return;
+            if (_this.KIVQModule.quizSubmitted) {return false};
 
-            if (_this.selectedAnswer){
+            if (_this.selectedAnswer &&! cPo.selectedAnswer ){
                 _this.showSelectedQuestion(questionNr);
-            }
+            };
 
-            $('.single-answer-box-bk' ).on('click',function(){
-                if ($(this).hasClass('disable')){
-                    return false;
-                }
-                $('.answers-container').find('.disable').removeClass('disable');
-                $('.single-answer-box-bk').each(function () {
-                    $(this).removeClass('wide single-answer-box-bk-apply single-answer-box-bk-applied');
-                    $('.single-answer-box-apply').empty().remove();
-                    $(this).children().removeClass('single-answer-box-small').addClass('single-answer-box');
-                });
+            $('.single-answer-box-bk').off().on('click',function(e){
 
-                $(this).addClass("wide")
-                    .addClass('single-answer-box-bk-apply')
-                    .children().removeClass('single-answer-box')
-                    .addClass(function(){
-                        $(this).addClass('single-answer-box-small')
-                            .after($('<div></div>')
-                                .addClass("single-answer-box-apply")
-                                .text(gM('mwe-quiz-continue'))
-                        )
+                if ($(this).hasClass('disable')) {return false};
+
+                if (e.target.className === 'single-answer-box-apply qContinue' ){
+                    e.stopPropagation();
+                    $('.single-answer-box-bk').addClass('disable');
+                    $('.single-answer-box-apply').fadeOut(100,function(){
+                        $(this).addClass('disable')
+                            .removeClass('qContinue')
+                            .text(gM('mwe-quiz-applied'))
+                            .addClass('qApplied').fadeIn(100);
                     });
-                _this.selectedAnswer =  $('.single-answer-box-small').attr('id');
-
-            });
-            $(document).off( 'click', '.single-answer-box-apply' )
-                .on('click', '.single-answer-box-apply', function () {
-                    if ($(this).hasClass('disable')) return false;
-                    $('.single-answer-box-apply').addClass('disable')
-                        .text(gM('mwe-quiz-applied'))
-                        .parent().removeClass('single-answer-box-bk-apply').hide().fadeOut('fast')
-                        .addClass('single-answer-box-bk-applied disable').hide().fadeIn('fast');
-
                     _this.KIVQModule.submitAnswer(questionNr,_this.selectedAnswer);
                     _this.selectedAnswer = null;
-                    $(this).delay(1800).fadeOut(function () {
-                        _this.KIVQModule.checkIfDone(questionNr);
-
+                    setTimeout(function(){_this.KIVQModule.checkIfDone(questionNr)},1800);
+                }
+                else{
+                    $('.answers-container').find('.disable').removeClass('disable');
+                    $('.single-answer-box-bk').each(function () {
+                        $(this).removeClass('wide single-answer-box-bk-apply single-answer-box-bk-applied');
+                        $('.single-answer-box-apply').empty().remove();
+                        $(this).children().removeClass('single-answer-box-txt-wide').addClass('single-answer-box-txt');
                     });
-                });
-        },
 
+                    $(this).addClass("wide")
+                        .addClass('single-answer-box-bk-apply')
+                        .children().removeClass('single-answer-box-txt')
+                        .addClass(function(){
+                            $(this).addClass('single-answer-box-txt-wide')
+                                .after($('<div></div>')
+                                    .addClass("single-answer-box-apply qContinue")
+                                    .text(gM('mwe-quiz-continue'))
+                            )
+                        });
+                    _this.selectedAnswer =  $('.single-answer-box-txt-wide').attr('id');
+                }
+            });
+        },
         ivqShowScreen:function(){
             var _this = this,embedPlayer = this.getPlayer();
             _this.showScreen();
         },
         ivqHideScreen:function(){
-
             var _this = this,embedPlayer = this.getPlayer();
             embedPlayer.getInterface().find('.ivqContainer').empty().remove();
             _this.hideScreen();
             _this.embedPlayer.enablePlayControls();
             _this.embedPlayer.triggerHelper( 'onEnableKeyboardBinding' );
             _this.KIVQModule.showQuizOnScrubber();
-
-
+            $(".icon-close").css("display", "");
         },
         addFooter: function (questionNr) {
             var _this = this;
@@ -473,7 +540,7 @@
                 });
                 return;
             }
-            if (_this.reviewMode) {
+            if (_this.KIVQModule.reviewMode) {
                 $(".ftr-left").append ($('<span>   ' +  gM('mwe-quiz-review').toUpperCase()
                 + ' ' + gM('mwe-quiz-question') + ' ' + this.KIVQModule.i2q(questionNr)
                 + '/' + $.cpObject.cpArray.length + '</span>'));
@@ -484,20 +551,28 @@
             } else {
                 $(".ftr-left").append($('<span> ' + gM('mwe-quiz-question') + ' ' + this.KIVQModule.i2q(questionNr)
                 + '/' + $.cpObject.cpArray.length + '</span>')
-                    .css("float", "right"))
+                    .css("float", "right")
+                    .css("cursor","default"))
                     .append($('<div></div>')
                         .addClass("pie")
                         .css("float", "right"))
                     .append($('<span>' + (_this.KIVQModule.getUnansweredQuestNrs()).length + ' '
                     + gM('mwe-quiz-unanswered') + '</span>')
-                        .css("float", "right"));
+                        .css("float", "right")
+                        .css("cursor","default"));
                 if (_this.KIVQModule.canSkip) {
-                    $(".ftr-right").html(gM('mwe-quiz-skipForNow')).on('click', function () {
-                        _this.KIVQModule.continuePlay();
+                    var skipTxt;
+                    if ($.cpObject.cpArray[questionNr].isAnswerd){
+                        skipTxt = gM('mwe-quiz-next');
+                    }else{
+                        skipTxt = gM('mwe-quiz-skipForNow');
+                    }
+                    $(".ftr-right").html(skipTxt).on('click', function () {
+                        _this.KIVQModule.checkIfDone(questionNr)
                     });
                 }else if(!_this.KIVQModule.canSkip && $.cpObject.cpArray[questionNr].isAnswerd ){
                     $(".ftr-right").html(gM('mwe-quiz-next')).on('click', function () {
-                        _this.KIVQModule.continuePlay();
+                        _this.KIVQModule.checkIfDone(questionNr)
                     });
                 }
             }
@@ -515,8 +590,9 @@
 
             $.each($.cpObject.cpArray, function (key, val) {
                 displayClass = val.isAnswerd ? "bubble bubble-ans " + buSize.bubbleAnsSize
-                                             : "bubble bubble-un-ans " + buSize.bubbleUnAnsSize;
-                var pos = (Math.round(((val.startTime/_this.entryData.msDuration)*100) * 10)/10)-1;
+                    : "bubble bubble-un-ans " + buSize.bubbleUnAnsSize;
+
+                var pos = (Math.round(((val.startTime/embedPlayer.kalturaPlayerMetaData.msDuration)*100) * 10)/10)-1;
                 $('.bubble-cont').append($('<div id ="' + key + '" style="margin-left:' + pos + '%">' +
                     _this.KIVQModule.i2q(key) + ' </div>')
                         .addClass(displayClass)
@@ -531,14 +607,14 @@
             }
             $('.bubble','.bubble-ans','.bubble-un-ans').off();
             $(handleBubbleclick).on('click', function () {
-                _this.unbind('seeking');
-                _this.KIVQModule.gotoScrubberPos(parseInt($(this).attr('id')));
-                _this.bind('seeking', function () {
-                    _this.isSeekingIVQ = true;
-                });
+                var qNumber = parseInt($(this).attr('id'));
+                _this.seekToQuestionTime = $.cpObject.cpArray[qNumber].startTime;
+                _this.KIVQModule.gotoScrubberPos(qNumber);
+                _this.isSeekingIVQ = true;
+                mw.log("Quiz: gotoScrubberPos : " + qNumber);
             });
         },
-        displayQuizEnd:function(){
+        displayQuizEndMarker:function(){
             var  _this = this;
             var scrubber = this.embedPlayer.getInterface().find(".scrubber");
 
@@ -549,5 +625,5 @@
                     _this.KIVQModule.quizEndScenario();
                 });
         }
-     }));
+    }));
 })(window.mw, window.jQuery);

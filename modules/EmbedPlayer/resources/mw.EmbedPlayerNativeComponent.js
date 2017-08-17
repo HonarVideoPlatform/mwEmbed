@@ -16,7 +16,7 @@
 		instanceOf: 'NativeComponent',
 
 		bindPostfix: '.EmbedPlayerNativeComponent',
-		
+
 		// Flag to only load the video ( not play it )
 		onlyLoadFlag: false,
 
@@ -48,6 +48,8 @@
 		playbackDone: false,
 
 		playingSource: undefined,
+
+		lastPlayPauseTime: 0,
 
 		// All the native events per:
 		// http://www.w3.org/TR/html5/video.html#mediaevents
@@ -88,6 +90,16 @@
 			'overlays': true
 		},
 
+		canPlay: function(readyCallback){
+			var deferred =  $.Deferred();
+			this.bindHelper("canplay", function () {
+				readyCallback();
+				return deferred.resolve();
+			});
+
+			return deferred;
+		},
+
 		setup: function (readyCallback) {
 			var _this = this;
 			mw.log("NativeComponent:: setup");
@@ -102,13 +114,15 @@
 			this.proxyElement = divElement;
 			try {
 				if (NativeBridge.videoPlayer) {
-					NativeBridge.videoPlayer.registePlayer(this.getPlayerElement());
+					NativeBridge.videoPlayer.registerPlayer(this.getPlayerElement());
 					NativeBridge.videoPlayer.registerEmbedPlayer(this);
 				}
 			}
 			catch (e) {
 				alert(e);
 			}
+
+			this.canPlayPromise = this.canPlay(readyCallback);
 
 			this.applyMediaElementBindings();
 
@@ -122,11 +136,13 @@
 			this.bindHelper("onEndedDone", function () {
 				_this.playbackDone = true;
 			});
+			if (this.startTime && !this.supportsURLTimeEncoding()) {
+				this.setStartTimeAttribute(this.startTime);
+			}
 			this.resolveSrcURL(this.getSrc()).then(
 				function (resolvedSrc) {
 					mw.log("EmbedPlayerNativeComponent::resolveSrcURL get succeeded");
 					_this.setSrcAttribute( resolvedSrc );
-					readyCallback();
 				},
 				function () {
 					mw.log("EmbedPlayerNativeComponent::resolveSrcURL get failed");
@@ -143,7 +159,7 @@
 		pushLicenseUri: function () {
 			var licenseServer = mw.getConfig('Kaltura.UdrmServerURL');
 			var licenseParams = this.mediaElement.getLicenseUriComponent();
-			
+
 			if (licenseServer && licenseParams) {
 				var licenseUri;
 				// Build licenseUri by mimeType.
@@ -157,6 +173,12 @@
 						// widevine modular, because we don't have any other dash DRM right now.
 						licenseUri = licenseServer + "/cenc/widevine/license?" + licenseParams;
 						break;
+					case "application/vnd.apple.mpegurl":
+						// fps
+						licenseUri = licenseServer + "/fps/license?" + licenseParams;
+						//Add the FPS certificate
+						this.getPlayerElement().attr('fpsCertificate', this.mediaElement.selectedSource.fpsCertificate);
+						break;
 					default:
 						break;
 				}
@@ -166,15 +188,25 @@
 			}
 		},
 
+		addStartTimeCheck: function () {
+			//nothing here, just override embedPlayer.js function
+		},
+
 		setSrcAttribute: function( source ) {
 			this.getPlayerElement().attr('src', source);
 			this.playingSource =  source;
 			this.pushLicenseUri();
 		},
 
+		setStartTimeAttribute : function(startTime){
+			this.getPlayerElement().attr('startTime', startTime);
+			this.pushLicenseUri();
+		},
+
 		playerSwitchSource: function (source, switchCallback, doneCallback) {
 			mw.log("NativeComponent:: playerSwitchSource");
 			var _this = this;
+			this.canPlayPromise = this.canPlay(switchCallback);
 			var vid = this.getPlayerElement();
 			var src = source.getSrc();
 			var switchBindPostfix = '.playerSwitchSource';
@@ -206,20 +238,13 @@
 			// Update some parent embedPlayer vars:
 			this.currentTime = 0;
 			this.previousTime = 0;
-			_this.hideSpinner();
+
 
 			if ($.isFunction(switchCallback)) {
 				$(vid).bind('durationchange' + switchBindPostfix, function () {
 					$( vid ).unbind( 'durationchange' + switchBindPostfix );
 					switchCallback( vid );
 				} );
-			}
-
-			var isPlayingAdsContext = _this.adsOnReplay || !(_this.adTimeline.displayedSlotCount > 0);
-			if ( (isPlayingAdsContext || _this.loop) && !_this.playbackDone) {
-				setTimeout(function () {
-					vid.play();
-				}, 100);
 			}
 
 			// Add the end binding if we have a post event:
@@ -246,13 +271,20 @@
 		},
 
 		changeMediaCallback: function (callback) {
-			// Check if we have source
-			if (!this.getSource()) {
-				callback();
-				return;
-			}
-
-			this.switchPlaySource(this.getSource(), function () {
+			var _this = this;
+			// If switching a Persistent native player update the source:
+			// ( stop and play won't refresh the source  )
+			_this.switchPlaySource(this.getSource(), function () {
+				if (!_this.autoplay  || ( _this.autoplay && mw.isMobileDevice()) ) {
+					// pause is need to keep pause state, while
+					// switch source calls .play() that some browsers require.
+					// to reflect source switches. Playlists handle pause state so no need to pause in playlist
+					_this.ignoreNextNativeEvent = true;
+					if ( !_this.playlist ){
+						_this.pause();
+					}
+					_this.updatePosterHTML();
+				}
 				callback();
 			});
 		},
@@ -325,20 +357,31 @@
 		 */
 
 		play: function () {
+			var _this = this;
 			mw.log("EmbedPlayerNativeComponent:: play::");
+			if (!this.checkPlayPauseTime()){
+				mw.log("EmbedPlayerNativeComponent:: received play right after pause: aborting play command");
+				return;
+			}
 			this.playbackDone = false;
 
 			this.unbindHelper('replayEvent').bindHelper('replayEvent',function(){
 				this.getPlayerElement().replay();
 			});
 
-			if (this.parent_play()) {
-				if (this.getPlayerElement()) { // update player
-					this.getPlayerElement().play();
+			var doPlay = function(){
+				if (_this.parent_play()) {
+					if (_this.getPlayerElement()) { // update player
+						_this.getPlayerElement().play();
+					}
+					_this.monitor();
 				}
-				this.monitor();
+				_this.removePoster();
 			}
-			this.removePoster();
+
+			this.canPlayPromise.then(function() {
+				doPlay();
+			});
 		},
 
 		/**
@@ -347,15 +390,39 @@
 		 */
 		pause: function () {
 			mw.log("EmbedPlayerNativeComponent:: pause::");
+			if (!this.checkPlayPauseTime()){
+				mw.log("EmbedPlayerNativeComponent:: received pause right after play: aborting pause command");
+				return;
+			}
 			this.parent_pause(); // update interface
 			if (this.getPlayerElement()) { // update player
 				this.getPlayerElement().pause();
 			}
 		},
 
+		// verify that we didn't get play right after pause or vise versa when user multiple clicks the device
+		checkPlayPauseTime: function(){
+
+			var d = new Date();
+			var t = d.getTime();
+			var executeCommand = false;
+			if (this.lastPlayPauseTime === 0 || (t - this.lastPlayPauseTime) > 1000){
+				executeCommand = true;
+			}
+			this.lastPlayPauseTime = t;
+			return executeCommand;
+		},
+
 		doSeek: function (seekTime) {
 			mw.log("EmbedPlayerNativeComponent:: seek::");
 			this.getPlayerElement().attr('currentTime', seekTime);
+		},
+		seek: function (seekTime, stopAfterSeek) {
+			if (seekTime === 0){
+				seekTime = 0.01;
+			}
+			this.parent_seek(seekTime, stopAfterSeek);
+
 		},
 
 		/**
@@ -369,6 +436,9 @@
 		setCurrentTime: function( seekTime , callback ) {
 			seekTime = parseFloat( seekTime );
 			mw.log( "EmbedPlayerNativeComponent:: setCurrentTime to " + seekTime );
+			if (seekTime === 0){
+				seekTime = 0.01;
+			}
 			this.getPlayerElement().attr('currentTime', seekTime);
 			if ($.isFunction(callback)) {
 				callback();
@@ -400,11 +470,11 @@
 
 		_onflavorsListChanged: function(event, data) {
 //			mw.log("_onFlavorsListChanged", event, data);
-			
+
 			// Build an array with this format:
 			// [{"assetid":0,"bandwidth":517120,"type":"video/mp4","height":0},{"assetid":1,"bandwidth":727040,"type":"video/mp4","height":0},{"assetid":2,"bandwidth":1041408,"type":"video/mp4","height":0}]
-			// 
-			
+			//
+
 			var flavorsList = [];
 			$.each(data.tracks, function(idx, obj) {
 				var flavor = {
@@ -417,7 +487,7 @@
 				};
 				flavorsList.push(flavor);
 			});
-			
+
 			this.onFlavorsListChanged(flavorsList);
 		},
 
@@ -562,6 +632,14 @@
 			this.triggerHelper('embedPlayerError', data);
 		},
 
+		_onbufferchange: function (event , isBuffering) {
+			if (isBuffering === "true") {
+				this.bufferStart();
+			} else {
+				this.bufferEnd();
+			}
+		},
+
 		/**
 		 * buffer progress
 		 * @param event
@@ -648,7 +726,7 @@
 		},
 
 		isVideoSiblingEnabled: function () {
-			return false;
+			return true;
 		},
 
 		isPlaying: function () {
@@ -657,30 +735,9 @@
 			}
 			return true;
 		},
-		
-		getSources: function(){
-			// check if manifest defined flavors have been defined:
-			if( this.manifestAdaptiveFlavors.length ){
-				return this.manifestAdaptiveFlavors;
-			}
-			return this.parent_getSources();
-		},
-		getSourceIndex: function (source) {
-			var sourceIndex = null;
-			$.each( this.getSources(), function( currentIndex, currentSource ) {
-				if (source.getAssetId() == currentSource.getAssetId()) {
-					sourceIndex = currentIndex;
-					return false;
-				}
-			});
-			// check for null, a zero index would evaluate false
-			if( sourceIndex == null ){
-				this.log("Error could not find source: " + source.getSrc());
-			}
-			return sourceIndex;
-		},
+
 		switchSrc: function (source) {
-			var sourceIndex = (source === -1) ? -1 : source.assetid; 
+			var sourceIndex = (source === -1) ? -1 : source.assetid;
 			this.getPlayerElement().switchFlavor(sourceIndex);
 		}
 
