@@ -1,0 +1,101 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Cue Points Vast Ads </title>
+<script type="text/javascript" src="../../../tests/qunit/qunit-bootstrap.js"></script>
+<script type="text/javascript" src="../../../mwEmbedLoader.php"></script>
+<script type="text/javascript" src="../../../docs/js/doc-bootstrap.js"></script>
+<script type="text/javascript">
+	var myPlayer;
+	mw.setConfig('EmbedPlayer.EnableIpadNativeFullscreen', true);
+	
+	// Bind to cuePointReached event
+	var jsCallbackReady = function( playerId ) {
+		myPlayer = $('#' + playerId )[0];
+
+		myPlayer.addJsListener("cuePointReached", "writeLog");
+		myPlayer.addJsListener("adOpportunity", "writeLog");
+	};
+
+	var writeLog = function( qPoint ) {
+		trackEventForTests( qPoint );
+		var type = (qPoint.context) ? 'Ad' : 'Code';
+		$('#eventRowDesc').after(
+			$('<tr />' ).append(
+				$('<td />').text( (qPoint.cuePoint.title) ? qPoint.cuePoint.title : qPoint.cuePoint.description ),
+				$('<td />').text( type ),
+				$('<td />').text( qPoint.cuePoint.startTime )
+			)
+		);
+	};
+</script>
+<script type="text/javascript" src="resources/qunit-kaltura-bootstrap.js"></script>
+<script type="text/javascript">	
+var testEventObject = {};
+//we use this round about way of tracking events to show the events are being sent for google.
+function trackEventForTests( qPoint ) {
+	if(  qPoint.context == "pre" ){
+		$( testEventObject ).trigger( 'preCueEvent', qPoint );
+	}
+	if( !qPoint.context ){
+		$( testEventObject ).trigger( 'cueEvent', qPoint );
+	}
+}
+function jsKalturaPlayerTest( videoId ){
+	// Name this module
+	module( "CuePoints" );
+
+	var kdp = $( '#' + videoId )[0];
+
+	asyncTest("start cue point", function(){
+		kalturaQunitWaitForPlayer(function(){
+			$( testEventObject ).bind('preCueEvent', function(event, qPoint){
+				var type = (qPoint.context) ? 'Ad' : 'Code';
+				equal( qPoint.cuePoint.title, "Preroll", "Preroll event sent" );
+				equal( qPoint.context, "pre", "Preroll Ad cue event sent" );
+				// continue testing
+				start();
+			});
+			kdp.sendNotification('doPlay');
+		});
+	});
+	asyncTest("CuePoint 1 at 3 seconds", function(){
+		$( testEventObject ).bind('cueEvent', function( event, qPoint ){
+			equal( qPoint.cuePoint.description, "Code Cue Point", "Code Cue Point event text sent");
+			equal( qPoint.cuePoint.startTime, 3000, "Code Cue Point event sent" );
+			// Finish tests:
+			kdp.sendNotification('doPause');
+			start();
+		});		
+	});
+
+}
+</script>
+</head>
+<body>
+<h2> Cue Points Vast Ads </h2>
+This demo includes a cuePoint with a vast ad at 5 seconds. 
+Read more about <a href="http://knowledge.kaltura.com/faq/how-configure-mid-roll-ads">Kaltura Ad cuePoints</a> 
+<div id="playbackModeSelector" ></div>
+<br /><br />
+<div id="kaltura_player" style="width:400px;height:333px"></div>
+<script>
+	kWidget.embed({
+		'targetId': 'kaltura_player',
+		'wid': '_243342',
+		'uiconf_id': '6470132',
+		'entry_id': '1_v1z55w0b'
+	})
+</script>
+<div style="float:left;padding-left:20px" >
+	<i>Cue Points events: </i><br />
+	<table border="1" width="520">
+	<tr id="eventRowDesc">
+		<td>Name</td>
+		<td>Type</td>
+		<td>Start Time</td>
+	</tr>
+	</table>
+</div>
+</body>
+</html>

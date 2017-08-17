@@ -1,0 +1,115 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>External Resources</title>
+<script type="text/javascript" src="../../../tests/qunit/qunit-bootstrap.js"></script>
+<script type="text/javascript" >
+	window.testExternalResourceInclude = function( resourceName ){
+		if( console && console.log ){
+			console.log( resourceName );
+		}
+	}
+</script>
+<script type="text/javascript" src="../../../mwEmbedLoader.php"></script>
+<script type="text/javascript" src="../../../docs/js/doc-bootstrap.js"></script>
+<script type="text/javascript">	
+// Enable uiconf js which includes external resources 
+mw.setConfig('Kaltura.EnableEmbedUiConfJs', true);
+mw.setConfig('LoadingSpinner.ImageUrl', 'externalResources/loading.gif');
+
+function jsKalturaPlayerTest( videoId ){
+	// Name this module
+	module( "External Resources" );
+	var kdp = $('#' + videoId )[0];
+	var $iframe = $('#' + videoId + '_ifp').contents();
+	
+	asyncTest("Check for On Page resource loading", function(){
+		kalturaQunitWaitForPlayer(function(){
+			equal( $('.fooBar' ).css('background-color'), 'rgb(255, 0, 0)', "On page CSS active" );
+			equal( $('#testPluginTarget').text(),  'update via on page js', "On page JS active" );
+			addTest2();
+			start();
+		});
+	});
+	window['addTest2'] = function(){
+		asyncTest("Check for iFrame resource loading", function(){
+			var iframeContext = $('#kaltura_player_ifp')[0].contentWindow;
+			equal( iframeContext.IframeCustomPluginJS2Var,  "iframe resource is loaded", "Iframe resource loaded");
+			equal( kdp.evaluate( '{myCustomPlugin.foo}' ), 'bar', "setKDP attribute export working" );
+			start();
+		});
+	}
+}
+
+</script>
+<!-- qunit-kaltura must come after qunit-bootstrap.js and after mwEmbedLoader.php and after any jsCallbackReady stuff-->
+<script type="text/javascript" src="resources/qunit-kaltura-bootstrap.js"></script>
+</head>
+<body>
+<h2> External Resources </h2>
+<div id="kaltura_player" style="width:400px;height:330px;"></div>
+<div id="kdoc-more-desc"><br>
+External resources enable you to override portions of the player skin, or add custom external plugins. 
+Please see the documentation on <a target="_new" href="http://html5video.org/wiki/Kaltura_InPlayer_HTML5_Plugins">iframe</a>
+ and <a target="_new" href="http://html5video.org/wiki/Kaltura_OnPage_Plugins">on-page plugins</a> for more information.  
+<h3>OnPage resources</h3>
+<ul>
+	<li><a href="externalResources/onPageCss1_fooBarPlugin.css">onPageCss1_fooBar.css</a> -- <span class="fooBar">sets this to red</span></li>
+	<li><a href="externalResources/onPageJs1_fooBarPlugin.js">onPageJs1_fooBarPlugin.js</a> -- console logs player ready event and update this span: <span id="testPluginTarget">update me</span></li>
+</ul>
+<h3>Iframe HTML5 player resources</h3>
+<ul>
+	<li><a href="externalResources/iframeHTML5_fooBarPlugin.js">Iframe fooBarPlugin.js</a> -- shows javascript associated with a plugin line attribute ( instead of a custom var resource ) 
+	<li><a href="externalResources/IframeCustomPluginJs1.js">IframeCustomPluginJs1</a> -- shows that the resource is loaded early on and can do normal plugin "loader" bindings</li>
+	<li><a href="externalResources/IframeCustomPluginJs2.js">IframeCustomPluginJs2</a> -- just a console log showing multiple plugins </li>
+	<li><a href="externalResources/IframeCustomPluginCss1.css">IframeCustomPluginCss1</a> -- custom css file ( changes play button to a flower )</li>
+	<li>Custom Loading Spinner - mw.setConfig('LoadingSpinner.ImageUrl', 'externalResources/loading.gif');</li>
+</ul>
+</div>
+<script>
+kWidget.embed({
+	'targetId' : 'kaltura_player',
+	'wid' : '_243342',
+	'uiconf_id' : '5994862',
+	'entry_id' : '0_uka1msg4',
+	'flashvars': {
+		'myComponent':{
+			'plugin' : true,
+			'img':"externalResources/flower.jpg",
+			'iframeHTML5Js':'externalResources/myComponent.js',
+			'iframeHTML5Css':'externalResources/myComponent.css'
+		},
+		"IframeCustomPluginCss1" : "externalResources/IframeCustomPluginCss1.css",
+		"IframeCustomPluginJs1" : "externalResources/iframe_fooBarPlugin.js",
+		"onPageJs1" : "externalResources/onPageJs1.js",
+		"onPageCss1" :"externalResources/onPageCss1.css"
+	}
+})
+</script>
+<h3>Relative path resources at run time</h3>
+The player library supports including runtime external resources. 
+These resources should be relative to the page that the player is being embed on.<br>
+When you transition to production these resources should be moved to a CDN and referenced there. 
+<pre class="prettyprint linenums">
+kWidget.embed({
+	'targetId' : 'kaltura_player',
+	'wid' : '_243342',
+	'uiconf_id' : '5994862',
+	'entry_id' : '0_uka1msg4',
+	'flashvars': {
+		'myComponent':{
+			'plugin' : true,
+			'img':"externalResources/flower.jpg",
+			'iframeHTML5Js':'externalResources/myComponent.js',
+			'iframeHTML5Css':'externalResources/myComponent.css'
+		},
+		"IframeCustomPluginCss1" : "externalResources/IframeCustomPluginCss1.css",
+		"onPageJs1" : "externalResources/onPageJs1.js",
+		"onPageCss1" :"externalResources/onPageCss1.css"
+	}
+});
+</pre>
+<h3>How do I build plugins and skins?</h3>
+See full plugin and css player toolkit docs in the <a title="kaltura-player-v2-toolkit-theme-skin-guide" href="http://knowledge.kaltura.com/kaltura-player-v2-toolkit-theme-skin-guide">Knowledge center</a>. 
+</body>
+</html>

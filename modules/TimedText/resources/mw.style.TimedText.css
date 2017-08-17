@@ -1,0 +1,15 @@
+.ttmlStyled {
+	color: white;
+	letter-spacing: 0.04em;
+	text-align: center;
+	padding: 0.2em;
+	line-height: 1.5em;
+}
+.ttmlStyled a {
+	text-decoration: none;
+	color : #BBF;
+}
+.ttmlStyled a:visited{
+	color : #BBF;
+}
+

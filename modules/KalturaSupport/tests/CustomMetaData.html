@@ -1,0 +1,63 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Custom Meta data</title>
+<script type="text/javascript" src="../../../tests/qunit/qunit-bootstrap.js"></script>
+<script type="text/javascript" src="../../../mwEmbedLoader.php"></script>
+<script type="text/javascript" src="../../../docs/js/doc-bootstrap.js"></script>
+</head>
+<body style="font-size:14px">
+<h2> Custom Meta data </h2>
+<div id="kaltura_player" style="width:400px;height:330px;"></div>
+<div id="kdoc-more-desc">
+Custom data allows you to associate custom metadata with entries. It can be accessed via "evaluate" calls in javascript.<br><br>
+<b>Listing all player metadata:</b>
+The following code shows how to list all custom metadata for a entry.
+<pre class="prettyprint linenums">
+kWidget.embed({<br/>	'targetId': 'kaltura_player',<br/>	'wid': '_243342',<br/>	'uiconf_id': '12905712',<br/>	'entry_id': '0_uka1msg4',<br/>	'flashvars': {<br/>		'metadataProfileId':  3282, // the metadata profile id from your account<br/>		'requiredMetadataFields' : true <br/>	},<br/>	'readyCallback': function( playerId ){<br/>		var kdp = $( '#' + playerId )[0];<br/>		kdp.addJsListener( 'metadataReceived', function (){<br/>			var customDataList = kdp.evaluate('{mediaProxy.entryMetadata}');<br/>			$.each( customDataList, function( key, val ){<br/>				$('#customData').append( '&lt;tr&gt;&lt;td&gt;' + key + '&lt;/td&gt;&lt;td&gt;' + val + '&lt;/td&gt;&lt;/tr&gt;' );<br/>			});<br/>		});<br/>	}<br/>})
+
+</pre>
+Pay attention to the metadataProfile id, set to 3282 per player.kaltura.com account, another valid test metadataProfile id for player.kaltura.com is 313142
+</div>
+<script>
+	kWidget.featureConfig({
+		'targetId': 'kaltura_player',
+		'wid': '_243342',
+		'uiconf_id': '12905712',
+		'entry_id': '0_uka1msg4',
+		'flashvars':{
+			'metadataProfileId': 3282,
+			'requiredMetadataFields' : true
+		},
+		'readyCallback': function( playerId ){
+			// empty custom metadata:
+			$('#customData tr').not('.head').remove();
+			var kdp = $( '#' + playerId )[0];
+			kdp.addJsListener( 'metadataReceived', function (){
+				var customDataList = kdp.evaluate('{mediaProxy.entryMetadata}');
+				$.each( customDataList, function( key, val ){
+					$('#customData').append( '<tr><td>' + key + '</td><td>' + val + '</td></tr>' );
+				});
+			});
+		}
+	})
+</script>
+<br>
+<a href="#" id="switchSource">Switch entry </a> This shows custom meta data for dynamically loaded entry.<br><br>
+<script type="text/javascript">
+	$('#switchSource').click(function(){
+		$('#customData tr').not('.head').remove();
+		$('#kaltura_player')[0].sendNotification("changeMedia",{ entryId:"0_swup5zao" });
+		return false;
+	});
+</script>
+<i>Custom Data for this player: </i><br />
+<table border="1" style="max-width:780px;" id="customData">
+<tr class="head" >
+	<td width="20%">Key</td>
+	<td>Value</td>
+</tr>
+</table>
+<br><br>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Moderation Plugin HTML5</title>
+
+<script type="text/javascript" src="../../../tests/qunit/qunit-bootstrap.js"></script>
+<script type="text/javascript" src="../../../mwEmbedLoader.php"></script>
+<script type="text/javascript" src="../../../docs/js/doc-bootstrap.js"></script>
+
+</head>
+<body>
+<h2> Moderation </h2>	
+<div id="kdp" style="width: 400px; height: 330px;"></div>
+<br />
+<script>
+kWidget.featureConfig({
+	'targetId': 'kdp',
+	'wid': '_243342',
+	'uiconf_id' : '12905712',
+	'entry_id' : '0_uka1msg4',
+	'flashvars': {
+		'moderation': {
+			'plugin' : true,
+			'header' : 'Report this content as Inapproriate',
+			'text' : "Please describe your concern about the video, so that we can review it and determine whether it isn't appropriate for all viewers.",
+			"tooltip": "Report",
+			"reasonSex": "Sexual Content",
+			"reasonViolence": "Violent Or Repulsive",
+			"reasonHarmful": "Harmful Or Dangerous Act",
+			"reasonSpam": "Spam / Commercials"
+		}
+	}
+});
+</script>
+
+</body>
+</html>

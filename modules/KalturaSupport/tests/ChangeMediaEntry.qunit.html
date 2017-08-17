@@ -1,0 +1,111 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Change media with no sources</title>
+<script type="text/javascript" src="../../../tests/qunit/qunit-bootstrap.js"></script>
+<script type="text/javascript" src="../../../mwEmbedLoader.php"></script>
+<script type="text/javascript" src="../../../docs/js/doc-bootstrap.js"></script>
+<script type="text/javascript">
+kWidget.addReadyCallback(function(videoId){
+	// add a local ref to the kdp: 
+	var kdp = document.getElementById( videoId );
+	if( window.QUnit ){
+		// Name this module
+		module( "Change media" );
+		asyncTest( "Empty entry displayed", function() {
+			window['qUnitOnKdpEmpty'] = function(){
+				ok( true, 'kdpEmpty event fired');
+				// wait for 1 second before issuing change media call
+				setTimeout(function(){
+					doChangeMediaTest();
+					start();
+				}, 250 );
+			};
+		});
+		window['onKdpEmpty'] = function(){
+			// give time for the test to register: 
+			setTimeout(function(){
+				qUnitOnKdpEmpty();
+			},1000);
+		};
+		kdp.addJsListener( 'kdpEmpty', 'onKdpEmpty' );
+		window.QUnit.start();
+		
+		window['doChangeMediaTest'] = function(){
+			asyncTest("Change Media", function(){
+				window['onChangeMedia'] = function(){
+					var entryId = kdp.evaluate('{mediaProxy.entry.id}');
+					equal( entryId, "0_swup5zao", "Entry 0_swup5zao change success" );
+					start();
+				}
+		
+				kdp.addJsListener( 'changeMedia', 'onChangeMedia' );
+				kdp.sendNotification( "changeMedia", { 'entryId' : '0_swup5zao' } );
+			});
+		}
+	}
+	$( '.changeMedia' ).click(function(){
+		kdp.sendNotification( "changeMedia", { 'entryId' : $(this).attr('data-entryId') });
+	});
+	
+	var kdp = document.getElementById( videoId );
+	// change media run at the start of the changeMedia sequence
+	kdp.kBind('changeMedia', function(data){
+		if( data.entryId ){
+			$("#changeLog").append( "EntryId: " + data.entryId );
+		}
+	})
+	// entry ready is run once the entry data has been loaded
+	kdp.kBind('entryReady', function(){
+		$("#changeLog").append( " Name: " + kdp.evaluate('{mediaProxy.entry.name}') + "\n" );
+	})
+});
+</script>
+</head>
+<body>
+<h2> Change media player </h2>
+This demonstrates loading an empty entry and then calling the changeMedia API to load different entry<br><br>
+Add changeMedia call for all <i>changeMedia buttons</i> :
+<pre class="prettyprint linenums">
+kWidget.addReadyCallback(function(playerId){
+	$( '.changeMedia' ).click(function(){
+		kdp.sendNotification( "changeMedia", { 'entryId' : $(this).attr('data-entryId') });
+	});
+});
+</pre>
+Listening to change media events:
+<pre class="prettyprint linenums">
+kWidget.addReadyCallback(function(playerId){
+	var kdp = document.getElementById( videoId );
+	kdp.kBind('changeMedia', function(data){
+		$("#changeLog").append( "EntryId: " + data.entryId + " name:" +
+			kdp.evaluate('{mediaProxy.entry.name}') + "\n" );
+		;
+	})
+});
+</pre>
+Change Media Log: <pre style="max-width:800px" id="changeLog"></pre>
+<i>Note: this player is empty until you change media to an active entry:</i> <br>
+<input class="changeMedia" type="button" data-entryId="404" value="Missing Entry" />
+<input class="changeMedia" type="button" data-entryId="0_swup5zao" value="Entry 1 fish" />
+<input class="changeMedia" type="button" data-entryId="0_wm82kqmm" value="Entry 2 electric sheep" />
+<!--  <input class="changeMedia" type="button" data-entryId="0_59x7sgqo" value="Entry 3 Kaltura logo" />  -->
+<br><br>
+
+<div id="kaltura_player" style="height:333px;width:400px"></div>
+<script>
+	function doEmbedPlayer( autoPlay ){
+		kWidget.embed( 'kaltura_player', {
+			'wid' : '_243342',
+			'uiconf_id': '12905712',
+			'entry_id': '0_swup5zao',
+			'flashvars': {
+				'autoPlay': !! autoPlay
+			}
+		});
+	}
+	doEmbedPlayer();
+</script>
+
+</body>
+</html>
