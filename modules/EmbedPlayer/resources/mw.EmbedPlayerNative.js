@@ -616,11 +616,7 @@
 					vid.removeAttribute('controls');
 
 					// dissable seeking ( if we were in a seeking state before the switch )
-					if (_this.isFlavorSwitching) {
-						_this.seeking = true;
-					} else {
-						_this.seeking = false;
-					}
+					_this.seeking = false;
 
 					// Workaround for 'changeMedia' on Android & iOS
 					// When changing media and not playing entry before spinner is stuck on black screen
@@ -1049,7 +1045,6 @@
 				var _this = this;
 				this.waitForSeekTarget().then(function(){
 					_this.seeking = false;
-					_this.isFlavorSwitching = false;
 					if (_this._propagateEvents) {
 						if( !_this.isLive() || ( _this.isLive() && _this.isDVR() ) ) {
 							_this.log(" trigger: seeked");
@@ -1463,9 +1458,36 @@
                 }
             }, 1000);
         },
-        switchAudioTrack: function(audioTrackIndex){
-            this.getPlayerElement().audioTracks[audioTrackIndex].enabled = true;
-        },
+		switchAudioTrack: function(audioTrackIndex){
+			var vid  = this.getPlayerElement();
+			var audioTracks = vid.audioTracks;
+			if(audioTracks[audioTrackIndex] && !audioTracks[audioTrackIndex].enabled) {
+			if(mw.isEdge()){
+
+				// Edge has a problem to switch audio track at playback time, so as a workaround - pause before the switching.
+				// When this issue will be fixed we can remove the entire code for Edge.
+		        // This issue should be fixed in Windows 10 build #14366.
+		        // See here: https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/7871229/
+
+					var _this = this;
+					var currentValue = this._propagateEvents;
+					this._propagateEvents = false; // prevent to appear the big play/pause button
+					vid.pause();
+					this.addPlayerSpinner();
+
+					audioTracks[audioTrackIndex].enabled = true;
+
+					setTimeout(function(){
+						vid.play();
+						_this.hideSpinner();
+						_this._propagateEvents = currentValue;
+
+					},200);
+				} else {
+					audioTracks[audioTrackIndex].enabled = true;
+				}
+			}
+		},
         getCurrentBufferLength: function(){
             if ( this.playerElement.buffered.length > 0 ) {
 				return parseInt(this.playerElement.buffered.end(this.playerElement.buffered.length-1) - this.playerElement.currentTime); //return buffer length in seconds
