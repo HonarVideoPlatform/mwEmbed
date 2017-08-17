@@ -1,5 +1,4 @@
 <?PHP
-
 // Script: Simple PHP Proxy: Get external HTML, JSON and more!
 //
 // *Version: 1.6, Last updated: 1/24/2009*
@@ -146,6 +145,9 @@
 // Include our configuration file
 require_once( realpath( dirname( __FILE__ ) ) . '/includes/DefaultSettings.php' );
 
+require_once( dirname( __FILE__ ) . '/modules/KalturaSupport/KalturaCommon.php' );
+$requestHelper = $container['request_helper'];
+
 function isValidHost( $url = null ){
 	global $kConf;
 	
@@ -186,6 +188,8 @@ $proxySession = false;
 // ############################################################################
 
 $url = isset($_GET['url']) ? urldecode( $_GET['url'] ) : false;
+//Replace white spaces with compliant %20
+$url = str_replace(" ","%20",$url);
 $header ='';
 if ( !$url ) {
 	
@@ -201,7 +205,7 @@ if ( !$url ) {
 	
 } else if( !isValidHost($url) ) {
 	// URL host is not whitelisted
-	$contents = 'ERROR: invalid url host [DENIED]';
+	$contents = 'ERROR: URL not in Kaltura domain whitelist [DENIED]';
 	$status = array( 'http_code' => 'ERROR' );
 } else {
 	$ch = curl_init( $url );
@@ -238,9 +242,10 @@ if ( !$url ) {
 	// Forward the client ip for GeoLookup: ( geo-lookup server hopefully is not dumb and uses X-Forwarded-For ) 
 	curl_setopt($ch, CURLOPT_HTTPHEADER, array(
 		'X-Forwarded-For: ' . $_SERVER['REMOTE_ADDR'],
+		// Add kaltura x-remote-address headers:
+		$requestHelper->getRemoteAddrHeader(),
 		'Expect:' // used to ignore "100 Continue Header" when using POST
 	));
-	
 	
 	// Forward the user agent:
 	curl_setopt( $ch, CURLOPT_USERAGENT, isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '' );

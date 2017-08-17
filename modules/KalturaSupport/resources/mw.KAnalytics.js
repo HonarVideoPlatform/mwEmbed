@@ -32,6 +32,9 @@ mw.KAnalytics.prototype = {
 	// Start Time
 	startReportTime: 0,
 
+	//delay the stats call in x sec
+	delay:0,
+
 	kEventTypes : {
 		'WIDGET_LOADED' : 1,
 		'MEDIA_LOADED' : 2,
@@ -76,6 +79,7 @@ mw.KAnalytics.prototype = {
 		this.embedPlayer = embedPlayer;
 		if( ! this.kClient ) {
 			this.kClient = mw.kApiGetPartnerClient( embedPlayer.kwidgetid );
+			this.delay = this.embedPlayer.getKalturaConfig( 'statistics' , 'delay' ) ? this.embedPlayer.getKalturaConfig( 'statistics' , 'delay' ) * 1000 : 0;
 		}
 		// Remove any old bindings:
 		$( embedPlayer ).unbind( this.bindPostFix );
@@ -101,13 +105,6 @@ mw.KAnalytics.prototype = {
 	 *			KalturaStatsEventType The eventType number.
 	 */
 	sendAnalyticsEvent: function( KalturaStatsEventKey ){
-		var _this = this;
-		// make sure we have a KS
-		this.kClient.getKS( function( ks ){
-			_this.doSendAnalyticsEvent( ks, KalturaStatsEventKey );
-		});
-	},
-	doSendAnalyticsEvent: function( ks, KalturaStatsEventKey ){
 		var _this = this;
 		mw.log("KAnalytics :: doSendAnalyticsEvent > " + KalturaStatsEventKey );
 		// Kalutra analytics does not collect info for ads:
@@ -169,12 +166,18 @@ mw.KAnalytics.prototype = {
 		// check for the vars in the correct location:
 		for( var fvKey in flashVarEvents){
 			if( this.embedPlayer.getKalturaConfig( 'statistics', fvKey ) ){
-				eventSet[ flashVarEvents[ fvKey ] ] = encodeURIComponent( this.embedPlayer.getKalturaConfig('', fvKey ) );
+				eventSet[ flashVarEvents[ fvKey ] ] = encodeURIComponent( this.embedPlayer.getKalturaConfig('statistics', fvKey ) );
 			}
 		}
+		// hideUserId will remove the userId from the analytics call EVEN if the embed code sends one (unless hashedUserId is in use)
+		if(this.embedPlayer.getKalturaConfig( 'statistics' , 'hideUserId') && eventSet.userId){
+			delete(eventSet.userId);
+		}
+
 
 		// Add referrer parameter
-		eventSet[ 'referrer' ] = encodeURIComponent( mw.getConfig('EmbedPlayer.IframeParentUrl') );
+		var pageReferrer =  mw.getConfig('EmbedPlayer.IsFriendlyIframe') ? mw.getConfig('EmbedPlayer.IframeParentUrl') : document.referrer;
+		eventSet[ 'referrer' ] = encodeURIComponent( pageReferrer );
 
 		// Add in base service and action calls:
 		var eventRequest = {'service' : 'stats', 'action' : 'collect'};
@@ -197,9 +200,19 @@ mw.KAnalytics.prototype = {
 				// error in calling parent page event
 			}
 		}
+		//hideKS is an attribute that will prevent the request from sending the KS even if the embed code receives one
+		if (this.embedPlayer.getFlashvars('ks') && !this.embedPlayer.getKalturaConfig( 'statistics' , 'hideKs') ){
+			eventRequest['ks'] = this.embedPlayer.getFlashvars('ks');
+		}
 
 		// Do the api request:
-		this.kClient.doRequest( eventRequest );
+		if (this.delay) {
+			setTimeout( function () {
+				_this.kClient.doRequest( eventRequest , null , true );
+			} , this.delay );
+		} else {
+			this.kClient.doRequest( eventRequest , null , true );
+		}
 	},
 
 	/**
@@ -308,26 +321,30 @@ mw.KAnalytics.prototype = {
 
 
 		// Send updates based on logic present in StatisticsMediator.as
-		if( !_this._p25Once && percent >= .25  &&  seekPercent <= .25 ) {
+		if ( !embedPlayer.isLive() ){
+			if( !_this._p25Once && percent >= .25  &&  seekPercent <= .25 ) {
 
-			_this._p25Once = true;
-			_this.sendAnalyticsEvent( 'PLAY_REACHED_25' );
+				_this._p25Once = true;
+				_this.sendAnalyticsEvent( 'PLAY_REACHED_25' );
+				$( embedPlayer ).trigger( "firstQuartile" );
 
-		} else if ( !_this._p50Once && percent >= .50 && seekPercent < .50 ) {
+			} else if ( !_this._p50Once && percent >= .50 && seekPercent < .50 ) {
 
-			_this._p50Once = true;
-			_this.sendAnalyticsEvent( 'PLAY_REACHED_50' );
+				_this._p50Once = true;
+				_this.sendAnalyticsEvent( 'PLAY_REACHED_50' );
+				$( embedPlayer ).trigger( "secondQuartile" );
 
-		} else if( !_this._p75Once && percent >= .75 && seekPercent < .75 ) {
+			} else if( !_this._p75Once && percent >= .75 && seekPercent < .75 ) {
 
-			_this._p75Once = true;
-			_this.sendAnalyticsEvent( 'PLAY_REACHED_75' );
+				_this._p75Once = true;
+				_this.sendAnalyticsEvent( 'PLAY_REACHED_75' );
+				$( embedPlayer ).trigger( "thirdQuartile" );
 
-		} else if(  !_this._p100Once && percent >= .98 && seekPercent < 1) {
+			} else if(  !_this._p100Once && percent >= .98 && seekPercent < 1) {
 
-			_this._p100Once = true;
-			_this.sendAnalyticsEvent( 'PLAY_REACHED_100' );
-
+				_this._p100Once = true;
+				_this.sendAnalyticsEvent( 'PLAY_REACHED_100' );
+			}
 		}
 	}
 };

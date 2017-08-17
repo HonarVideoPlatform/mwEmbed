@@ -10,7 +10,8 @@
 			this.id = playerId;
 			this.targetObj = target;
 			var xapPath = mw.getMwEmbedPath() + 'modules/EmbedPlayer/binPlayers/silverlight-player/Player.xap';
-			//var xapPath = 'http://192.168.193.144//lightKdp/KDP3/bin-debug/Player.xap';
+
+			//var xapPath = 'http://192.168.162.72/lightKdp/Player.xap';
 			window["onError" + playerId]=function(sender, args){
 				var appSource = "";
 				if (sender != null && sender != 0) {
@@ -66,7 +67,8 @@
 							'alert': 'onAlert',
 							'mute': 'onMute',
 							'unmute': 'onUnMute',
-							'volumeChanged': 'onVolumeChanged'
+							'volumeChanged': 'onVolumeChanged',
+							'error': 'onError'
 						};
 
 						$.each( bindEventMap, function( bindName, localMethod ) {
@@ -99,10 +101,14 @@
 					width:"100%",height:"100%",
 					background:"transparent",
 					windowless:"true",
-					version: "4.0.60310.0" },
+					version: "4.0.60310.0",
+					 EnableGPUAcceleration:"true",
+					 debug:mw.getConfig('debug') ? "true" : ""
+				 },
 				{
 					onError: "onError" + playerId,
-					enableHtmlAccess: "true" },
+					enableHtmlAccess: "true"
+				},
 				params
 			//	context: "row4"
 			);
@@ -111,6 +117,10 @@
 		},
 		onUpdatePlayhead : function ( playheadVal ) {
 			this.currentTime = playheadVal;
+
+		},
+		getMulticastBitrate : function(){
+			this.bitRate = this.playerProxy.MulticastAverageBitRate;
 		},
 		onPause : function() {
 			this.paused = true;
@@ -139,6 +149,9 @@
 		onUnMute: function () {
 			this.muted = false;
 		},
+		onError: function () {
+			$( this ).trigger( 'error' );
+		},
 		onVolumeChanged: function ( data ) {
 			this.volume = data.newVolume;
 			$( this).trigger( 'volumechange' );
@@ -146,6 +159,21 @@
 		addJsListener: function( eventName, methodName ) {
 			if ( this.playerElement ) {
 				this.bindPlayerFunction( eventName, methodName );
+			}
+		},
+		changeMulticastParams: function( multicastGroup, sourceAddress,multicastPolicyOverMulticastEnabled ) {
+			if ( this.playerElement ) {
+				this.playerElement.changeMulticastParams( multicastGroup, sourceAddress, multicastPolicyOverMulticastEnabled);
+			}
+		},
+
+		removeJsListener: function( eventName, methodName ) {
+			if ( this.playerElement ) {
+				mw.log( 'PlayerElementSilverlight:: unbindPlayerFunction:' + eventName );
+				// The kaltura kdp can only call a global function by given name
+				var gKdpCallbackName = 'silverlight_' + methodName + '_cb_' + this.id.replace(/[^a-zA-Z 0-9]+/g,'');
+				// Remove the listener ( if it exists already )
+				this.playerElement.removeJsListener( eventName, gKdpCallbackName );
 			}
 		},
 		play: function(){
@@ -175,6 +203,12 @@
 		selectTrack: function( index ) {
 			this.playerProxy.selectTrack( index );
 		},
+		selectAudioTrack: function( index ) {
+			this.playerProxy.selectAudioTrack( index );
+		},
+		selectTextTrack: function( index ) {
+			this.playerProxy.selectTextTrack( index );
+		},
 		reloadMedia: function() {
 			this.playerProxy.reloadMedia();
 			this.isStopped = false;
@@ -182,7 +216,13 @@
 		stretchFill: function() {
 			this.playerProxy.stretchFill();
 		},
-
+		getMulticastDiagnostics: function(){
+			if (this.playerProxy) {
+				return this.playerProxy.getDiagnostics();
+			} else {
+				return {}
+			}
+		},
 		/**
 		 * Bind a Player Function,
 		 *

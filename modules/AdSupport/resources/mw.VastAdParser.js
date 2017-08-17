@@ -12,13 +12,12 @@ mw.VastAdParser = {
 	 * VAST support
 	 * Convert the vast ad display format into a display conf:
 	 */
-	parse: function( xmlObject, callback , wrapperData ){
+	parse: function( xmlObject, callback , wrapperData, originalAjaxOptions, adLoader ){
 		var _this = this;
-        // in case there is a wrapper for this ad - keep the data so we will be able to track the wrapper events later
-        this.wrapperData = null;
-        if(wrapperData){
-            this.wrapperData = wrapperData;
-        }
+		// in case there is a wrapper for this ad - keep the data so we will be able to track the wrapper events later
+		if (wrapperData == null) {
+			wrapperData = [];
+		}
 		var adConf = {};
 		var $vast = $( xmlObject );
 
@@ -30,15 +29,18 @@ mw.VastAdParser = {
 
 		// Check for Vast Wrapper response
 		if( $vast.find('Wrapper').length && $vast.find('VASTAdTagURI').length) {
+			wrapperData.push($vast);
 			var adUrl = $vast.find('VASTAdTagURI').text();
+			adUrl=adLoader.embedPlayer.evaluate(adUrl);
 			addVideoClicksIfExist();
 			mw.log('VastAdParser:: Found vast wrapper, load ad: ' + adUrl);
-			mw.AdLoader.load( adUrl, callback, true , $vast );
+			adLoader.load( adUrl, callback, true , wrapperData, originalAjaxOptions );
 			return ;
 		}
 
 
 		// Get the basic set of sequences
+		this.wrapperData = wrapperData;
 		adConf.ads = [];
 		$vast.find( 'Ad' ).each( function( inx, node ){
 		//	mw.log( 'VastAdParser:: getVastAdDisplayConf: ' + node );
@@ -57,10 +59,18 @@ mw.VastAdParser = {
 				currentAd.duration = mw.npt2seconds( $ad.find( 'duration' ).text() );
 			}
 
-            // set ad system
-            if ($ad.find('AdSystem')){
-                currentAd.adSystem = $ad.find('AdSystem').text();
-            }
+			// set ad system
+			if ($ad.find('AdSystem')){
+				currentAd.adSystem = $ad.find('AdSystem').text();
+			}
+			// set AdTitle
+			if ($ad.find('AdTitle')){
+				currentAd.title = $ad.find('AdTitle').text();
+			}
+			// set Description
+			if ($ad.find('Description')){
+				currentAd.description = $ad.find('Description').text();
+			}
 
 			// Set impression urls
 			currentAd.impressions = [];
@@ -106,29 +116,32 @@ mw.VastAdParser = {
 				});
 			});
 
-            //handle wrapper events if exists
-            if(_this.wrapperData){
+			//handle wrapper events if exists
+			if ( _this.wrapperData.length > 0 ) {
+				for ( var i = 0, iMax = _this.wrapperData.length; i < iMax; i++ ) {
+					var wrapperData = _this.wrapperData[i];
 
-                //impression of wrapper:
-                var $impressionWrapper = $(_this.wrapperData).contents().find('Wrapper Impression');
-                if($impressionWrapper.length){
-                    $impressionWrapper.each( function( na, trackingNode ){
-                        currentAd.impressions.unshift({
-                            'beaconUrl' : $(trackingNode).text()
-                        });
-                    });
-                }
-                //events
-                var $wrapperEvents = $(_this.wrapperData).contents().find('Wrapper Creatives TrackingEvents Tracking');
-                if($wrapperEvents.length){
-                    $wrapperEvents.each( function( na, trackingNode ){
-                        currentAd.trackingEvents.push({
-                            'eventName' : $( trackingNode ).attr('event'),
-                            'beaconUrl' : _this.getURLFromNode( trackingNode )
-                        });
-                    });
-                }
-            }
+					//impression of wrapper:
+					var $impressionWrapper = $(wrapperData).contents().find('Wrapper Impression');
+					if($impressionWrapper.length){
+						$impressionWrapper.each( function( na, trackingNode ){
+							currentAd.impressions.unshift({
+								'beaconUrl' : $(trackingNode).text()
+							});
+						});
+					}
+					//events
+					var $wrapperEvents = $(wrapperData).contents().find('Wrapper Creatives TrackingEvents Tracking');
+					if($wrapperEvents.length){
+						$wrapperEvents.each( function( na, trackingNode ){
+							currentAd.trackingEvents.push({
+								'eventName' : $( trackingNode ).attr('event'),
+								'beaconUrl' : _this.getURLFromNode( trackingNode )
+							});
+						});
+					}
+				}
+			}
 
 			currentAd.videoFiles = [];
 			// Set the media file:
@@ -136,12 +149,12 @@ mw.VastAdParser = {
 
 				// Add the video source ( if an html5 compatible type )
 				var type  = $( mediaFile ).attr('type') ? $( mediaFile ).attr('type') : $( mediaFile ).attr('creativeType');
-				var delivery  = $( mediaFile ).attr('delivery');
+				//var delivery  = $( mediaFile ).attr('delivery');
 
 				//we dont support streaming method (break with rtmp
-				if ( delivery === "streaming" ){
-					type = "none";
-				}
+				//if ( delivery === "streaming" ){
+				//	type = "none";
+				//}
 				// Normalize mp4 into h264 format:
 				if( type  == 'video/x-mp4' || type == 'video/mp4' ){
 					type = 'video/h264';
@@ -206,11 +219,19 @@ mw.VastAdParser = {
 			$ad.find('CompanionAds Companion').each( function( na, companionNode ){
 				var staticResource = _this.getResourceObject( companionNode );
 				if( staticResource ){
+
+					staticResource.trackingEvents = [];
+					$(companionNode).find( 'trackingEvents Tracking' ).each( function( na, trackingNode ){
+						staticResource.trackingEvents.push({
+							'eventName' : $( trackingNode ).attr('event'),
+							'beaconUrl' : _this.getURLFromNode( trackingNode )
+						});
+					});
 					// Add the staticResourceto the ad config:
 					currentAd.companions.push( staticResource );
 				}
 			});
-			
+
 			// look for icons
 			currentAd.icons = [];
 			$ad.find('Icons Icon').each( function( na, icon ){
@@ -239,7 +260,7 @@ mw.VastAdParser = {
 		if (_this.videoClickTrackingUrl != undefined){
 			adConf.videoClickTracking.push(_this.videoClickTrackingUrl);
 		}
-        adConf.wrapperData = _this.wrapperData;
+		adConf.wrapperData = wrapperData;
 		// Run callback we adConf data
 		callback( adConf );
 	},
@@ -249,7 +270,7 @@ mw.VastAdParser = {
 		var _this = this;
 		// Build the curentCompanion
 		var resourceObj = {};
-		var companionAttr = [ 'width', 'height', 'id', 'expandedWidth', 'expandedHeight' ];
+		var companionAttr = [ 'width', 'height', 'id', 'expandedWidth', 'expandedHeight','minSuggestedDuration' ];
 		$j.each( companionAttr, function(na, attr){
 			if( $( resourceNode ).attr( attr ) ){
 				resourceObj[ attr ] = $( resourceNode ).attr( attr );
@@ -361,15 +382,20 @@ mw.VastAdParser = {
 						);
 					}
 					// Add the image to the $companionHtml
-					if( $( companionNode ).find('CompanionClickThrough').text() != '' ){
+					if( $( companionNode ).find('CompanionClickThrough,NonLinearClickThrough').text() != '' ){
 						$companionHtml = $('<a />')
 							.attr({
 								'href' : _this.getURLFromNode(
 									$( companionNode ).find('CompanionClickThrough,NonLinearClickThrough')[0]
-								)
+								),
+								'target' : '_new'
 							}).append( $img );
 					} else {
 						$companionHtml = $img;
+					}
+					// support non-linear clickthrough tracking
+					if( $( companionNode ).find('NonLinearClickTracking').text() != '' ){
+						$companionHtml.attr("data-NonLinearClickTracking", $(companionNode).find('NonLinearClickTracking').text());
 					}
 				break;
 				case 'application/x-shockwave-flash':
@@ -428,7 +454,9 @@ mw.VastAdParser = {
 		// check for empty impression, return empty text instead of trying to decode
 		var urlText = $.trim( $( node ).text() );
 		try {
-			urlText = decodeURIComponent( urlText )
+			if( ! /[<>`#%{}\s|\\^\~\[\]]/.test(decodeURIComponent(urlText)) && !mw.getConfig('disableVastDecodeURI') ){
+				urlText = decodeURIComponent(urlText)
+			}
 		} catch( e ){
 			mw.log("BastError url includes non-utf chars? ")
 		}

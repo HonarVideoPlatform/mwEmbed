@@ -7,10 +7,11 @@
 			"cssClass": "bottomLeft",
 			"img": null,
 			"href": null,
-			"padding": null
+			"padding": null,
+			"hideTimeout": 0
 		},
 		isSafeEnviornment: function(){
-			return !!this.getConfig('img');
+			return this.getConfig('img') || this.getConfig('watermarkPath');
 		},
 		setup: function(){
 			var _this = this;
@@ -18,12 +19,25 @@
 			if( this.getConfig('watermarkPosition') ){
 				this.setConfig('cssClass', this.getConfig('watermarkPosition'));
 			}
+			// support legacy path config:
+			if( this.getConfig('watermarkPath') ){
+				this.setConfig('img', this.getConfig('watermarkPath'));
+			}
 			this.bind('AdSupport_StartAdPlayback', function(){
 				_this.getComponent().hide();
 			});
 			this.bind('AdSupport_EndAdPlayback', function(){
 				_this.getComponent().show();
 			});
+
+			if( this.getConfig('hideTimeout') != 0 ){
+
+				this.bind('onChangeMediaDone playerReady', function(){
+					_this.getComponent().show();
+						_this.timeoutWatermark();
+				});
+
+			}
 		},
 		getComponent: function(){
 			var _this = this;
@@ -50,6 +64,14 @@
 				}
 			}
 			return this.$el;
+		},
+		timeoutWatermark: function(){
+			var _this = this;
+			this.bind('firstPlay', function() {
+				setTimeout(function () {
+					_this.$el.fadeOut("slow");
+				}, _this.getConfig('hideTimeout') * 1000)
+			});
 		}
 	}));
 

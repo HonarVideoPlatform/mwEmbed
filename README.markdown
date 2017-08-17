@@ -22,10 +22,28 @@ Can't find what your looking for in the documentation, ran into an issue check t
 
 * Pull requests can be sent to <a href="https://github.com/kaltura/mwEmbed/">our git hub repo</a>. 
 * Our coding conventions <a href="http://www.mediawiki.org/wiki/Manual:Coding_conventions/JavaScript">follow mediaWiki js guidelines</a>. 
+* See [getting strated guide](http://knowledge.kaltura.com/kaltura-player-toolkit-theme-skin-and-plugins-guide)
+* Also see [Yeoman project](https://github.com/kaltura/generator-kalturaplayer-module) for auto generating skeleton kaltura player plugins.  
 
 ## Release Notes
 
-[Release Notes ](http://html5video.org/wiki/Kaltura_HTML5_Release_Notes) documents every release and provides production, staging and zip downloads. 
+[Release Notes ](https://github.com/kaltura/mwEmbed/tags) documents every release and provides production, staging and zip downloads. 
+
+## Libraries and sub-projects
+
+### Kaltura developed
+
+* [Chromless flash kdp](https://github.com/kaltura/chromeless-kdp) 
+* [Chromeless sliverlight](https://github.com/kaltura/chromeless-silverlight)
+* [OSMF HLS for flash](https://github.com/kaltura/HLS-OSMF) -- repo not yet public
+* Android HLS player -- repo not yet public
+* [Player Studio](https://github.com/kaltura/player-studio) -- visual player config JSON editor 
+
+### External libraries 
+
+* [Resource Loader](https://www.mediawiki.org/wiki/ResourceLoader)
+* [jQuery](http://jquery.com/) 
+* [bootstrap](http://getbootstrap.com/) -- for documentation pages
 
 ## Library Features
 
@@ -39,9 +57,5 @@ Kaltura HTML5 library is the upstream library for the wikimedia video support in
 
 All mwEmbed code is released under the AGPLv3 unless a different license for a particular library is specified in the applicable library path
 
-Copyright (C) 2007-2012 Kaltura, Wikimedia Foundation
-
-Sub modules and libraries carry specific copyright.
-
-Author Michael Dale, Ran Yefet, Avi Vaisenberger, Itay Kinnrot, Michal Radwantzor and many others.
+Authors: See [GitHub contributors list](https://github.com/kaltura/mwEmbed/graphs/contributors).
 

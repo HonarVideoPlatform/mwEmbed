@@ -33,8 +33,8 @@
 				'rgb(232,44,46)'
 			],
 			imageUrl: '',  // url for image to replace the spinner
-			speed: 1.6,    // Rounds per second
-			trail: 100,    // Afterglow percentage
+			speed: 1.6,	// Rounds per second
+			trail: 100,	// Afterglow percentage
 			shadow: false, // Whether to render a shadow
 			hwaccel: true, // Whether to use hardware acceleration
 			className: 'spinner', // The CSS class to assign to the spinner
@@ -47,15 +47,15 @@
 			opts = {};
 		}
 		// get any config based options:
-        var options = null;
-        if( mw.getConfig('loadingSpinner') ) {
-            options = mw.getConfig('loadingSpinner');
-        }else{
-            // fix for IE where the config is not loaded yet - try to get the config from the kalturaIframePackageData
-            if (kalturaIframePackageData && kalturaIframePackageData.playerConfig && kalturaIframePackageData.playerConfig.plugins && kalturaIframePackageData.playerConfig.plugins.loadingSpinner){
-                options = kalturaIframePackageData.playerConfig.plugins.loadingSpinner;
-            }
-        }
+		var options = null;
+		if( mw.getConfig('loadingSpinner') ) {
+			options = mw.getConfig('loadingSpinner');
+		}else{
+			// fix for IE where the config is not loaded yet - try to get the config from the kalturaIframePackageData
+			if (kalturaIframePackageData && kalturaIframePackageData.playerConfig && kalturaIframePackageData.playerConfig.plugins && kalturaIframePackageData.playerConfig.plugins.loadingSpinner){
+				options = kalturaIframePackageData.playerConfig.plugins.loadingSpinner;
+			}
+		}
 		if( options ) {
 			opts = $.extend(opts, options );
 			// normalize some options: 
@@ -81,8 +81,8 @@
 				delete thisSpinner;
 			}
 			if ( opts !== false ) {
-				if (opts['imageUrl'].length > 0){
-					var $loadingSpinner = $('<img />').attr("src", opts['imageUrl']).load(function() {
+				if ( opts['imageUrl'] && opts['imageUrl'].length > 0 ){
+					var $loadingSpinner = $('<img />').addClass(opts['className']).attr("src", opts['imageUrl']).load(function() {
 						// Set spinner position based on image dimension
 						$( this ).css({
 							'margin-top': '-' + (this.height/2) + 'px',
@@ -91,7 +91,12 @@
 					});
 					thisSpinner = $this.append( $loadingSpinner);
 				}else{
-					thisSpinner = new Spinner( $.extend( { color: $this.css('color') }, opts ) ).spin( this );
+					if (opts['customSpinner'] === true){
+						var $loadingSpinner = $('<div />').addClass(opts['className']);
+						thisSpinner = $this.append( $loadingSpinner);
+					}else{
+						thisSpinner = new Spinner( $.extend( { color: $this.css('color') }, opts ) ).spin( this );
+					}
 				}
 			}
 		});
@@ -123,13 +128,14 @@
 			.loadingSpinner(
 				spinOps
 			)
+		
 		var pos = $( this ).position();
 		var $overlay = $("<div />")
 			.css( pos )
 			.css( {
 				'position': 'absolute',
-				'width' : $(this).width(),
-				'height': $(this).height()
+				'width' : '100%',
+				'height': '100%'
 			})
 			.append(
 				$spinner

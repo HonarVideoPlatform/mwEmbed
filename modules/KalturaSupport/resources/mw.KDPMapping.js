@@ -13,19 +13,6 @@
 	};
 	mw.KDPMapping.prototype = {
 
-		// ability to format expressions
-		formatFunctions: {
-			timeFormat: function( value ){
-				return mw.seconds2npt( parseFloat(value) );
-			},
-			dateFormat: function( value ){
-				var date = new Date( value * 1000 );
-				return date.toDateString();
-			},
-			numberWithCommas: function( value ){
-				return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-			}
-		},
 		// global list of kdp listening callbacks
 		listenerList: {},
 		/**
@@ -33,6 +20,8 @@
 		*/
 		init: function( embedPlayer ){
 			var _this = this;
+			this.registerDefaultFormaters();
+
 			// player api:
 			var kdpApiMethods = [ 'addJsListener', 'removeJsListener', 'sendNotification',
 								  'setKDPAttribute', 'evaluate' ];
@@ -92,6 +81,21 @@
 			}
 		},
 
+		registerDefaultFormaters: function() {
+			mw.util.formaters().register({
+				timeFormat: function( value ){
+					return mw.seconds2npt( parseFloat(value) );
+				},
+				dateFormat: function( value ){
+					var date = new Date( value * 1000 );
+					return date.toDateString();
+				},
+				numberWithCommas: function( value ){
+					return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+				}
+			});
+		},
+
 		/**
 		 * Emulates Kaltura setAttribute function
 		 * @param {Object} embedPlayer Base embedPlayer to be affected
@@ -137,10 +141,8 @@
 		},
 		updateKS: function ( embedPlayer, ks){
 			var client = mw.kApiGetPartnerClient( embedPlayer.kwidgetid );
-			// clear out any old player data cache:
-			client.clearCache();
 			// update the new ks:
-			client.setKS( ks );
+			client.setKs( ks );
 			// Update KS flashvar
 			embedPlayer.setFlashvars( 'ks', ks );
 			// TODO confirm flash KDP issues a changeMedia internally for ks updates
@@ -269,6 +271,12 @@
 				case 'isHTML5':
 					return true;
 					break;
+				case 'flashVersion':
+					return kWidget.getFlashVersion();
+					break;
+				case 'playerVersion': 
+					return window['MWEMBED_VERSION'];
+					break;
 				case 'sequenceProxy':
 					if( ! embedPlayer.sequenceProxy ){
 						return null;
@@ -302,6 +310,25 @@
 						case 'volume':
 							return embedPlayer.volume;
 							break;
+						case 'buffer':
+							switch( objectPath[2] ){
+								case 'lastBufferDuration':
+									return embedPlayer.lastBufferDuration || 0;
+								break;
+								case 'lastBufferDurationMs':
+									return ( embedPlayer.lastBufferDuration ) ? embedPlayer.lastBufferDuration*1000 : 0;
+								break;
+								case 'bufferEndTime':
+									return embedPlayer.bufferEndTime;
+								break;
+								case 'bufferStartTime':
+									return embedPlayer.bufferStartTime;
+								break;
+								case 'percent': 
+									return ( embedPlayer.bufferedPercent );
+								break;
+							}
+							break;
 						case 'player':
 							switch( objectPath[2] ){
 								case 'currentTime':
@@ -314,6 +341,21 @@
 										ct = 0;*/
 									// give the current time - any start offset. 
 									return embedPlayer.currentTime;
+								break;
+								case 'height': 
+									return embedPlayer.getHeight();
+								break;
+								case 'width':
+									return embedPlayer.getWidth();
+								break;
+								case 'position':
+									try{
+										// try to get outer player position in page. 
+										var pos = $("#" + embedPlayer.id, parent.document.body).position();
+										return pos.left + ',' + pos.top;
+									}catch(e){
+										return '0,0';
+									}
 								break;
 							}
 						break;
@@ -359,9 +401,20 @@
 								return embedPlayer.kalturaPlayerMetaData;
 							}
 						break;
+						case 'sources': 
+							return embedPlayer.mediaElement.getSources();
+						break;
 						case 'isLive':
 							return embedPlayer.isLive();
 						break;
+						case 'mediaPlayTo':
+							var mediaPlayTo = embedPlayer.getFlashvars('mediaProxy.mediaPlayTo');
+							return mediaPlayTo ? mediaPlayTo :null;
+							break;
+						case 'mediaPlayFrom':
+							var mediaPlayFrom = embedPlayer.getFlashvars('mediaProxy.mediaPlayFrom');
+							return mediaPlayFrom ? mediaPlayFrom : null;
+							break;
 						case 'isOffline':
 							if ( $.isFunction( embedPlayer.isOffline ) ) {
 								return embedPlayer.isOffline();
@@ -370,7 +423,7 @@
 						break;	
 						case 'kalturaMediaFlavorArray':
 							if( ! embedPlayer.kalturaFlavors ){
-							return null;
+								return null;
 							}
 							return embedPlayer.kalturaFlavors;
 						break;
@@ -419,6 +472,9 @@
 							}
 							return kw;
 						break;
+						case 'targetId':
+							return embedPlayer.id;
+						break;
 						case 'sessionId':
 							return window.kWidgetSupport.getGUID();
 						break;
@@ -440,10 +496,6 @@
 								return 'ready';
 							}
 							return null;
-
-						break;
-						case 'loadTime':
-						return kWidget.loadTime[embedPlayer.kwidgetid];
 						break;
 					}
 				break;
@@ -499,8 +551,34 @@
 							var location = getLocation(referrer);
 							return location.hostname;
 							break;
+						case 'nativeAdId':
+							if( embedPlayer ) {
+								return embedPlayer.getFlashvars('nativeAdId');
+							} else {
+								return "";
+							}
+							break;
+						case 'nativeVersion':
+							if ( embedPlayer ) {
+								return embedPlayer.getFlashvars( 'nativeVersion' );
+							} else {
+								return "";
+							}
+							break;
+						case 'streamerType':
+							if (embedPlayer){
+								return embedPlayer.streamerType;
+							}
+							return "";
+							break;
 					}
 					break;
+				case 'embedServices':
+					var proxyData = embedPlayer.getKalturaConfig( 'proxyData' );
+					var filedName = expression.replace('embedServices.', '');
+					return this.getProperty(filedName, proxyData);
+					break;
+
 			}
 			// Look for a plugin based config: typeof
 			var pluginConfigValue = null;
@@ -532,8 +610,8 @@
 				var expArr = expression.split('|');
 				expression = expArr[0];
 				formatFunc = expArr[1];
-				if( typeof this.formatFunctions[ formatFunc ] == 'function' ){
-					formatFunc = this.formatFunctions[ formatFunc ];
+				if( mw.util.formaters().exists(formatFunc) ){
+					formatFunc = mw.util.formaters().get(formatFunc);
 				} else {
 					formatFunc = null;
 				}
@@ -559,7 +637,19 @@
 					break;
 			}
 		},
+		getProperty: function( propertyName, object ) {
+			var parts = propertyName.split( "." ),
+				length = parts.length,
+				i,
+				property = object || this;
 
+			for ( i = 0; i < length; i++ ) {
+				if (property === undefined) break;
+				property = property[parts[i]];
+			}
+
+			return property;
+		},
 		/**
 		 * Emulates Kaltura removeJsListener function
 		 */
@@ -689,7 +779,7 @@
 				case 'readyToLoad':
 					if( embedPlayer.playerReadyFlag ){
 						// player is already ready when listener is added
-						if( ! embedPlayer.kentryid ){
+						if( ! embedPlayer.kalturaPlayerMetaData ){
 							embedPlayer.kdpEmptyFlag = true;
 							callback( embedPlayer.id );
 						}
@@ -698,7 +788,7 @@
 						b( 'playerReady', function(){
 							// only trigger kdpEmpty when the player is empty
 							// TODO support 'real' player empty state, ie not via "error handler"
-							if( ! embedPlayer.kentryid ){
+							if( ! embedPlayer.kalturaPlayerMetaData ){
 								embedPlayer.kdpEmptyFlag = true;
 								// run after all other playerReady events: 
 								setTimeout(function(){
@@ -798,6 +888,9 @@
 					b( "durationchange", function(){
 						callback( {'newValue' : embedPlayer.duration}, embedPlayer.id );
 					});
+					b( "durationChange", function(){
+						callback( {'newValue' : embedPlayer.duration}, embedPlayer.id );
+					});
 				break;
 				case 'openFullScreen':
 				case 'hasOpenedFullScreen':
@@ -863,10 +956,10 @@
 					})
 					break;
 				case 'bytesDownloadedChange':
-					// KDP sends an initial bytes loaded zeor at player ready:
+					// KDP sends an initial bytes loaded zero at player ready:
 					var prevBufferBytes = 0;
 					b( 'monitorEvent', function(){
-						if( typeof embedPlayer.bufferedPercent != 'undefined' ){
+						if( typeof embedPlayer.bufferedPercent != 'undefined' && embedPlayer.mediaElement.selectedSource ){
 							var bufferBytes = parseInt( embedPlayer.bufferedPercent *  embedPlayer.mediaElement.selectedSource.getSize() );
 							if( bufferBytes != prevBufferBytes ){
 								callback( { 'newValue': bufferBytes }, embedPlayer.id );
@@ -910,32 +1003,33 @@
 						callback( { 'timeSlot': slotType }, embedPlayer.id );
 					});
 					break;
+
 				case 'preSequenceComplete':
-					b('AdSupport_PreSequenceComplete', function( e, slotType ){
+					b('AdSupport_preSequenceComplete', function( e, slotType ){
 						callback( { 'timeSlot': slotType }, embedPlayer.id );
 					});
 					break;
 
 				// mid Sequence:
-				case 'midrollStarted':
+				case 'midSequenceStart':
 					b('AdSupport_midrollStarted', function( e, slotType ){
 						callback( { 'timeSlot': slotType }, embedPlayer.id );
 					});
 					break;
 				case 'midSequenceComplete':
-					b('AdSupport_MidSequenceComplete', function( e, slotType ){
+					b('AdSupport_midSequenceComplete', function( e, slotType ){
 						callback( { 'timeSlot': slotType }, embedPlayer.id );
 					});
 					break;
 
 				// post roll Sequence:
-				case 'postRollStarted':
+				case 'postSequenceStart':
 					b('AdSupport_postrollStarted', function( e, slotType ){
 						callback( { 'timeSlot': slotType }, embedPlayer.id );
 					});
 					break;
 				case 'postSequenceComplete':
-					b('AdSupport_PostSequenceComplete', function( e, slotType ){
+					b('AdSupport_postSequenceComplete', function( e, slotType ){
 						callback( { 'timeSlot': slotType }, embedPlayer.id );
 					});
 					break;
@@ -1012,6 +1106,16 @@
 				case 'freePreviewEnd':
 					b('KalturaSupport_FreePreviewEnd');
 					break;
+				case 'switchingChangeStarted':
+					b( 'sourceSwitchingStarted', function( event, data ) {
+					callback( data );
+					});
+					break;
+				case 'switchingChangeComplete':
+					b( 'sourceSwitchingEnd', function( event, data ) {
+						callback( data );
+					});
+					break;
 				default:
 					// Custom listner
 					// ( called with any custom arguments that are provided in the trigger)
@@ -1068,24 +1172,27 @@
 					embedPlayer.pause();
 					break;
 				case 'doStop':
-					setTimeout(function() {
-						embedPlayer.ignoreNextNativeEvent = true;
-						embedPlayer.stop();
-					},10);
+					if ( !embedPlayer.stopped ){
+						setTimeout(function() {
+							embedPlayer.ignoreNextNativeEvent = true;
+	                                    embedPlayer.seek(0, true);
+							embedPlayer.stop();
+						},10);
+					}
 					break;
 				case 'doReplay':
 					embedPlayer.replay();
 					break;
 				case 'doSeek':
 					// Kaltura doSeek is in seconds rather than percentage:
-					var percent = ( parseFloat( notificationData ) - embedPlayer.startOffset )/ embedPlayer.getDuration();
+					var seekTime = ( parseFloat( notificationData ) - embedPlayer.startOffset );
 					// Update local kPreSeekTime
 					embedPlayer.kPreSeekTime =  embedPlayer.currentTime;
 					// Once the seek is complete null kPreSeekTime
 					embedPlayer.bindHelper( 'seeked.kdpMapOnce', function(){
 						embedPlayer.kPreSeekTime = null;
 					});
-					embedPlayer.seek( percent, embedPlayer.paused );
+					embedPlayer.seek( seekTime );
 					break;
 				case 'changeVolume':
 					embedPlayer.setVolume( parseFloat( notificationData ),true );
@@ -1100,27 +1207,12 @@
 					embedPlayer.emptySources();
 					break;
 				case 'changeMedia':
-					// check if we are in a playlist
-					if( embedPlayer.playlist  &&  !notificationData.playlistCall ){
-						var clipList = embedPlayer.playlist.sourceHandler.getClipList();
-						// search playlist for entryId
-						for( var inx =0; inx < clipList.length; inx++ ){
-							var clip = clipList[inx];
-							// todo ( why is this not read from playlist source hander? )
-							var autoContinue = embedPlayer.playlist.sourceHandler.autoContinue
-							if( clip.id == notificationData.entryId ){
-								// issue playlist index update ( not a direct changeMedia call
-								 embedPlayer.playlist.playClip( inx, autoContinue );
-								 // don't continue with normal change media.
-								 return ;
-							}
-						};
-					}
-
 					// Check changeMedia if we don't have entryId and referenceId and they both not -1 - Empty sources
 					if( ( ! notificationData.entryId || notificationData.entryId == "" || notificationData.entryId == -1 )
-						&& ( ! notificationData.referenceId || notificationData.referenceId == "" || notificationData.referenceId == -1 ) )
-					{
+						&& ( ! notificationData.referenceId || notificationData.referenceId == "" || notificationData.referenceId == -1 ) 
+						// check for mediaProxy based override: 
+						&& !notificationData.mediaProxy
+					){
 						mw.log( "KDPMapping:: ChangeMedia missing entryId or refrenceid, empty sources.")
 						embedPlayer.emptySources();
 						break;
@@ -1128,8 +1220,11 @@
 					// Check if we have entryId and it's not -1. than we change media
 					if( (notificationData.entryId && notificationData.entryId != -1)
 							||
-						(notificationData.referenceId && notificationData.referenceId != -1) )
-					{
+						(notificationData.referenceId && notificationData.referenceId != -1) 
+							||
+						(notificationData.mediaProxy)
+					){
+						
 						// Check if we already started change media request
 						if( embedPlayer.changeMediaStarted ) {
 							break;
@@ -1146,6 +1241,9 @@
 						}
 						// Update the entry id
 						embedPlayer.kentryid = notificationData.entryId;
+						if (notificationData.referenceId){
+							embedPlayer.referenceId = notificationData.referenceId;
+						}
 						// Clear player & entry meta
 						embedPlayer.kalturaPlayerMetaData = null;
 						embedPlayer.kalturaEntryMetaData = null;
@@ -1160,6 +1258,14 @@
 						// Temporary update the thumbnail to black pixel. the real poster comes from entry metadata
 						embedPlayer.updatePoster();
 
+						// if data is injected via changeMedia, re-load into iframe inject location:
+						if( notificationData.mediaProxy ){
+							window.kalturaIframePackageData.entryResult = notificationData.mediaProxy;
+							// update plugin possition. Future refactor should treat mediaProxy as plugin  
+							embedPlayer.playerConfig.plugins['mediaProxy'] = notificationData.mediaProxy;
+							embedPlayer.playerConfig.plugins['mediaProxy'].manualProvider = true;
+						}
+						
 						// Run the embedPlayer changeMedia function
 						embedPlayer.changeMedia();
 						break;
