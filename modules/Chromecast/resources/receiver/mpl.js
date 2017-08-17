@@ -60,7 +60,11 @@ onload = function () {
 				document.getElementById('messages').style.display = 'none';
 			}
 			if (payload['target'] === 'logo') {
-				document.getElementById('logo').style.opacity = 0;
+				var logoElement =  document.getElementById('logo');
+				logoElement.style.opacity = 0;
+				setTimeout(function() {
+					logoElement.style.display = 'none';
+				},1000);
 			} else {
 				document.getElementById('receiverVideoElement').style.display = 'none';
 			}
@@ -110,7 +114,7 @@ onload = function () {
 		} else if (payload['type'] === 'load') {
 			setMediaManagerEvents();
 		} else if (payload['type'] === 'notification') {
-			kdp.sendNotification(payload['event']); // pass notification event to the player
+			kdp.sendNotification(payload['event'], [payload['data']]); // pass notification event to the player
 		} else if (payload['type'] === 'setLogo') {
 			document.getElementById('logo').style.backgroundImage = "url(" + payload['logo'] + ")";
 		} else if (payload['type'] === 'embed' && !playerInitialized) {
@@ -149,7 +153,6 @@ onload = function () {
 						}
 					};
 					fv = extend(fv, payload['flashVars']);
-
 					var mimeType = null;
 					var src = null;
 
@@ -172,15 +175,6 @@ onload = function () {
 										msg = msg + "|" + src + "|" + mimeType;
 									}
 									messageBus.broadcast(msg);
-								});
-								kdp.kBind("waterMarkLoaded", function(waterMarkElement){
-									var css = getCss(waterMarkElement);
-									document.getElementById("videoHolder").appendChild(waterMarkElement);
-									for (var property in css) {
-										if (css.hasOwnProperty(property)) {
-											waterMarkElement.style[property] = css[property];
-										}
-									}
 								});
 								kdp.kBind("SourceSelected", function(source){
 									mimeType = source.mimeType;
@@ -588,65 +582,69 @@ function initApp() {
 
 function setCaption(trackNumber) {
 	var current, next;
-	var streamCount = protocol.getStreamCount();
-	var streamInfo;
-	for (current = 0; current < streamCount; current++) {
-		if (protocol.isStreamEnabled(current)) {
-			streamInfo = protocol.getStreamInfo(current);
-			if (streamInfo.mimeType.indexOf('text') === 0) {
-				protocol.enableStream(current, false);
-				mediaPlayer.enableCaptions(false);
-				break;
+	if (protocol) {
+		var streamCount = protocol.getStreamCount();
+		var streamInfo;
+		for ( current = 0 ; current < streamCount ; current++ ) {
+			if ( protocol.isStreamEnabled( current ) ) {
+				streamInfo = protocol.getStreamInfo( current );
+				if ( streamInfo.mimeType.indexOf( 'text' ) === 0 ) {
+					protocol.enableStream( current , false );
+					mediaPlayer.enableCaptions( false );
+					break;
+				}
 			}
 		}
-	}
-	if (trackNumber) {
-		protocol.enableStream(trackNumber, true);
-		mediaPlayer.enableCaptions(true);
+		if ( trackNumber ) {
+			protocol.enableStream( trackNumber , true );
+			mediaPlayer.enableCaptions( true );
+		}
 	}
 }
 
 function nextCaption() {
 	var current, next;
-	var streamCount = protocol.getStreamCount();
-	var streamInfo;
-	for (current = 0; current < streamCount; current++) {
-		if (protocol.isStreamEnabled(current)) {
-			streamInfo = protocol.getStreamInfo(current);
-			if (streamInfo.mimeType.indexOf('text') === 0) {
-				break;
+	if (protocol) {
+		var streamCount = protocol.getStreamCount();
+		var streamInfo;
+		for ( current = 0 ; current < streamCount ; current++ ) {
+			if ( protocol.isStreamEnabled( current ) ) {
+				streamInfo = protocol.getStreamInfo( current );
+				if ( streamInfo.mimeType.indexOf( 'text' ) === 0 ) {
+					break;
+				}
 			}
 		}
-	}
 
-	if (current === streamCount) {
-		next = 0;
-	} else {
-		next = current + 1;
-	}
-
-	while (next !== current) {
-		if (next === streamCount) {
+		if ( current === streamCount ) {
 			next = 0;
+		} else {
+			next = current + 1;
 		}
 
-		streamInfo = protocol.getStreamInfo(next);
-		if (streamInfo.mimeType.indexOf('text') === 0) {
-			break;
+		while ( next !== current ) {
+			if ( next === streamCount ) {
+				next = 0;
+			}
+
+			streamInfo = protocol.getStreamInfo( next );
+			if ( streamInfo.mimeType.indexOf( 'text' ) === 0 ) {
+				break;
+			}
+
+			next++;
 		}
 
-		next++;
-	}
+		if ( next !== current ) {
+			if ( current !== streamCount ) {
+				protocol.enableStream( current , false );
+				mediaPlayer.enableCaptions( false );
+			}
 
-	if (next !== current) {
-		if (current !== streamCount) {
-			protocol.enableStream(current, false);
-			mediaPlayer.enableCaptions(false);
-		}
-
-		if (next !== streamCount) {
-			protocol.enableStream(next, true);
-			mediaPlayer.enableCaptions(true);
+			if ( next !== streamCount ) {
+				protocol.enableStream( next , true );
+				mediaPlayer.enableCaptions( true );
+			}
 		}
 	}
 }
@@ -714,7 +712,7 @@ function setMediaElementEvents(mediaElement) {
 		var captions = {};
 		for (var c = 0; c < streamCount; c++) {
 			streamInfo = protocol.getStreamInfo(c);
-			if (streamInfo.mimeType === 'text') {
+			if (streamInfo.mimeType.indexOf('text') === 0) {
 				captions[c] = streamInfo.language;
 			} else if (streamInfo.mimeType === 'video/mp4' ||
 				streamInfo.mimeType === 'video/mp2t') {
