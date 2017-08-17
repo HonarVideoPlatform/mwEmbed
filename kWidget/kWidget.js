@@ -1,7 +1,7 @@
 /**
  * KWidget library provided embed layer services to html5 and flash players, as well as client side abstraction for some kaltura services.
  */
-(function () {
+(function ($) {
 // Use strict ECMAScript 5
 	"use strict";
 
@@ -196,7 +196,7 @@
 					window.location.host != 'localhost'
 				) {
 					if (console && console.error) {
-						console.error("Error: Using non-prodcution version of kaltura player library. Please see http://knowledge.kaltura.com/production-player-urls")
+						console.error("Error: Using non-production version of kaltura player library. Please see http://knowledge.kaltura.com/production-player-urls")
 					}
 				}
 			}
@@ -647,9 +647,8 @@
 			}
 			elm.innerHTML = '' +
 				'<div style="position: relative; width: 100%; height: 100%;">' +
-				'<button class="kWidgetCentered kWidgetPlayBtn" ' + 'id="' + targetId + '_playBtn" >' +
-				'<span class="kWidgetAccessibilityLabel">' + 'Play video content' + '</span></button>' +
-				'<img class="kWidgetCentered" src="' + this.getKalturaThumbUrl(settings) + '" >' +
+				'<button aria-label="Play video content"  class="kWidgetCentered kWidgetPlayBtn" ' + 'id="' + targetId + '_playBtn" ></button>' +
+				'<img class="kWidgetCentered" src="' + this.getKalturaThumbUrl(settings) + '" alt="Video thumbnail">' +
 				'</div>';
 			// Add a click binding to do the really embed:
 			var playBtn = document.getElementById(targetId + '_playBtn');
@@ -661,6 +660,14 @@
 				settings.readyCallback = function (playerId) {
 					// issue a play ( since we already clicked the play button )
 					var kdp = document.getElementById(playerId);
+					kdp.kBind('mediaReady', function () {
+						setTimeout(function () {
+							if (_this.isMobileDevice()) {
+								kdp.sendNotification('doPlay');
+							}
+						}, 0);
+					});
+
 					if (typeof orgEmbedCallback == 'function') {
 						orgEmbedCallback(playerId);
 					}
@@ -965,8 +972,7 @@
 			iframe.scrolling = "no";
 			iframe.name = iframeId;
 			iframe.className = 'mwEmbedKalturaIframe';
-			iframe.setAttribute('aria-labelledby', 'Player ' + targetId);
-			iframe.setAttribute('aria-describedby', 'The Kaltura Dynamic Video Player');
+			iframe.setAttribute('title', 'The Kaltura Dynamic Video Player');
 			// IE8 requires frameborder attribute to hide frame border:
 			iframe.setAttribute('frameborder', '0');
 
@@ -1065,7 +1071,11 @@
 					delete settings.flashvars.jsonConfig;
 					url += '?' + this.getIframeRequest(widgetElm, settings);
 					requestData = {"jsonConfig": jsonConfig};
+					url += "&protocol=" + location.protocol.slice(0, -1);
+				} else {
+					url += "?protocol=" + location.protocol.slice(0, -1);
 				}
+
 				$.ajax({
 					type: "POST",
 					dataType: 'text',
@@ -1081,6 +1091,7 @@
 				})
 			} else {
 				var iframeUrl = this.getIframeUrl() + '?' + iframeRequest;
+				iframeUrl += "&protocol=" + location.protocol.slice(0, -1);
 				// Store iframe urls
 				this.iframeUrls[ targetId ] = iframeUrl;
 				// do an iframe payload request:
@@ -2527,4 +2538,4 @@
 	window.KWidget = kWidget;
 	window.kWidget = kWidget;
 
-})();
+})(window.jQuery);

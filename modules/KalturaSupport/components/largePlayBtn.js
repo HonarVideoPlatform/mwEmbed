@@ -8,6 +8,9 @@
 			'togglePause': true,
 			'order': 1
 		},
+		playLabel: gM('mwe-embedplayer-play_clip'),
+		pauseLabel: gM('mwe-embedplayer-pause_clip'),
+
 		setup: function() {
 			this.addBindings();
 		},
@@ -37,6 +40,7 @@
 					} else {
 						_this.getComponent().removeClass( "icon-pause" ).addClass( "icon-play" );
 					}
+					_this.setAccessibility(_this.getComponent(), _this.playLabel);
 					_this.show();
 				}
 			});
@@ -55,6 +59,7 @@
 			});
 			this.bind('onPlayerStateChange', function(e, newState, oldState){
 				if( newState == 'load' || newState == 'play' ){
+					_this.setAccessibility(_this.getComponent(), _this.pauseLabel);
 					_this.hide(true);
 				}
 				if( newState == 'pause' && _this.getPlayer().isPauseLoading && !mw.isChromeCast()){
@@ -96,6 +101,11 @@
 		},
 		hideComponent: function( force ) {
 			if( force || !this.isPersistantPlayBtn() ) {
+				//Need to cancel animation if hiding right after showing button in mobile skin
+				//cause in show we use animation in mobile skin
+				if (this.embedPlayer.isMobileSkin()){
+					this.getComponent().stop();
+				}
 				this.getComponent().hide();
 			}
 		},
@@ -127,17 +137,15 @@
 			this.hideComponent();
 		},
 		getComponent: function() {
-			var _this = this;
-			var eventName = 'click';
-			if ( mw.isAndroid() ){
-				eventName += ' touchstart';
-			}
 			if( !this.$el ) {
+				var _this = this;
+				var eventName = 'click';
 				this.$el = $( '<a />' )
 					.attr( {
 						'tabindex': '-1',
 						'href' : '#',
-						'title' : gM( 'mwe-embedplayer-play_clip' ),
+						'role': 'button',
+						'title' : this.playLabel,
 						'class'	: "icon-play " + this.getCssClass()
 					} )
 					.hide()

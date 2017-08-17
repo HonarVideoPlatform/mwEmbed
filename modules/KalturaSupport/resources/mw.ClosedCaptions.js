@@ -29,12 +29,14 @@
 			'smartContainerCloseEvent': 'changedClosedCaptions',
 			"forceWebVTT": false, // force using webvtt on-the-fly. only for kalturaAPI captions
 			"enableOptionsMenu": false,
-			"sortCaptionsAlphabetically": false
+			"sortCaptionsAlphabetically": false,
+			"enableNativeTextTrackCSS": false
 		},
 
 		textSources: [],
 		defaultBottom: 15,
 		lastActiveCaption: null,
+		updateLayoutEventFired: false,
 		ended: false,
 
 		setup: function(){
@@ -68,7 +70,7 @@
 			this.embedPlayer.bindHelper("propertyChangedEvent", function(event, data){
 				if ( data.plugin === _this.pluginName ){
 					if ( data.property === "captions" ){
-						_this.getMenu().$el.find("li a[title="+data.value+"]").click();
+						_this.getMenu().$el.find("li a")[data.value].click();
 					}
 				}
 			});
@@ -102,6 +104,8 @@
 							source.loaded = true;
 							newSources.push( source );
 						} );
+						_this.textSources = newSources;
+						_this.handleDefaultSource();
 						_this.buildMenu( newSources );
 						outOfBandCaptionEventHandlers.call(_this);
 					}
@@ -157,12 +161,16 @@
                 this.bind('resizeEvent', function () {
 					// in WebVTT we have to remove the caption on resizing
 					// for recalculation the caption layout
-                    if ( _this.selectedSource.mimeType === "text/vtt" ) {
+                    if ( _this.selectedSource && _this.selectedSource.mimeType === "text/vtt" ) {
 						mw.log( 'mw.ClosedCaptions:: resizeEvent: remove captions' );
                         _this.getPlayer().getInterface().find('.track').remove();
                     }
                 })
             }
+
+            this.bind('casting',function (  ) {
+                _this.getPlayer().getInterface().find( '.track' ).remove();
+            });
 
 			this.bind( 'onplay', function(){
 				_this.playbackStarted = true;
@@ -193,7 +201,11 @@
 				}
 			});
 
-			this.bind( 'onCloseFullScreen onOpenFullScreen', function(){
+			this.bind( 'updateLayout', function() {
+				if (_this.updateLayoutEventFired) {
+					// avoid infinite loop.
+					return;
+				}
 				if (_this.getConfig("displayCaptions") == true){
 					_this.updateTextSize();
 				}
@@ -230,6 +242,15 @@
 			});
 			this.bind( 'newCaptionsStyles', function (e, stylesObj){
 				_this.customStyle = stylesObj;
+				$('#cvaaStyle').remove();
+				if( _this.getConfig( 'enableNativeTextTrackCSS' ) === true ) {
+					var embeddedCss = _this.getCssFromJson(stylesObj);
+					$('<style id="cvaaStyle" type="text/css"></style>').text(embeddedCss).appendTo('head');
+				}
+			});
+			this.bind( 'onChangeMedia', function (e, stylesObj){
+				//Reset UI state on change media
+				_this.getBtn().show();
 			});
 		},
 		addTextSource: function(captionData){
@@ -274,7 +295,7 @@
 				var _this = this;
 				// give time for the dom to update: 
 				setTimeout(function(){
-					_this.updateBelowVideoCaptionContainer();	
+					_this.updateBelowVideoCaptionContainer();
 				},50)
 			}
 		},
@@ -301,7 +322,6 @@
 		},
 		hideCaptions: function(){
 			if( !this.getConfig('displayCaptions') || this.textSources.length === 0 ) {
-				this.getMenu().clearActive();
 				if (this.getConfig('showOffButton')){
 						this.getMenu().$el.find('.offBtn').addClass('active');
 				}
@@ -314,7 +334,6 @@
 		},
 		showCaptions: function(){
 			if( this.getConfig('displayCaptions') ) {
-				this.getMenu().clearActive();
 				this.getCaptionsOverlay().show();
 				if( this.selectedSource != null ) {
 					this.getPlayer().triggerHelper('closedCaptionsDisplayed', {language: this.selectedSource.label});
@@ -366,14 +385,17 @@
 					_this.forceLoadLanguage();
 				}
 
-				if( _this.getConfig('displayCaptions') !== false || ($.cookie( _this.cookieName ) !== 'None' && $.cookie( _this.cookieName )) ){
-					_this.autoSelectSource();
-					if( _this.selectedSource ){
-						_this.setTextSource(_this.selectedSource, false);
-					}
-				}
+				_this.handleDefaultSource();
 				callback();
 			});
+		},
+		handleDefaultSource: function () {
+			if( this.getConfig('displayCaptions') !== false || ($.cookie( this.cookieName ) !== 'None' && $.cookie( this.cookieName )) ){
+				this.autoSelectSource();
+				if( this.selectedSource ){
+					this.setTextSource(this.selectedSource, false);
+				}
+			}
 		},
 		textSourcesInSources: function(sources, textSource){
 			for ( var  i = 0; i < sources.length; i++ ){
@@ -491,10 +513,12 @@
 			var captionsSrc;
 			if( mw.isIphone() && !mw.getConfig('disableTrackElement') && !this.getConfig('forceLoadLanguage') || this.getConfig("forceWebVTT") ) {
 				// getting generated vtt file from dfxp/srt
+				var ks = _this.getFlashvars('ks');
 				captionsSrc = mw.getConfig('Kaltura.ServiceUrl') +
 							"/api_v3/index.php/service/caption_captionasset/action/serveWebVTT/captionAssetId/" +
 							dbTextSource.id +
 							"/segmentIndex/-1/version/2/captions.vtt";
+				captionsSrc += ks ? '/ks/' + ks : '';
 			} else {
 				captionsSrc = this.getCaptionURL( dbTextSource.id ) + '/.' + dbTextSource.fileExt;
 			}
@@ -554,17 +578,25 @@
 				if( defaultLangKey == 'None' ){
 					return ;
 				}
+				if ( mw.isIOS() && !mw.isIpad()) {
+					this.selectDefaultIosTrack(defaultLangKey);
+					return ;
+				}
 				source = this.selectSourceByLangKey( defaultLangKey );
 				if( source ){
 					this.log('autoSelectSource: select by defaultLanguageKey: ' + defaultLangKey);
 					this.selectedSource = source;
 					this.embedPlayer.getInterface().find( '[srclang='+ defaultLangKey +']').attr("default", "true");
 					return ;
-				}				
+				}
 			}
             // Get source by "default" property
             if ( !this.selectedSource ) {
                 source = this.selectDefaultSource();
+                if ( source && mw.isIOS() && !mw.isIpad() ) {
+					this.selectDefaultIosTrack(source.srclang);
+					return ;
+                }
                 if( source ){
                     this.log('autoSelectSource: select by default caption');
                     this.selectedSource = source;
@@ -586,6 +618,12 @@
 				this.log('autoSelectSource: select first caption');
 				this.selectedSource = this.textSources[0];
 			}
+		},
+		selectDefaultIosTrack: function (defaultLangKey) {
+			var _this = this;
+			this.once( 'playing', function (){
+				_this.embedPlayer.selectDefaultCaption(defaultLangKey);
+			});
 		},
 		selectSourceByLangKey: function( langKey ){
 			var _this = this;
@@ -651,7 +689,6 @@
 				.html($(caption.content)
 					.addClass('caption')
 					.css('pointer-events', 'auto')
-					.css("background-color", (this.customStyle && this.customStyle.windowColor) ? this.customStyle.windowColor : "none")
 				);
 
 			this.displayTextTarget($textTarget);
@@ -668,6 +705,11 @@
 		},
 
 		addCaptionAsText: function ( source, capId, caption ) {
+			var captionDirection = "auto";
+			//Set CC direction to rtl only in IE since it dose not support auto attribute
+			if ( source.srclang === 'he' && mw.isIE11() ) {
+				captionDirection = "rtl";
+			}
 			// use capId as a class instead of id for easy selections and no conflicts with
 			// multiple players on page.
 			var $textTarget = $('<div />')
@@ -675,18 +717,13 @@
 				.attr('data-capId', capId)
 				.hide();
 
-			var $windowTarget = $('<div />')
-				.css("background-color", (this.customStyle && this.customStyle.windowColor) ? this.customStyle.windowColor : "none")
-				.addClass('trackWindow');
-
 			// Update text ( use "html" instead of "text" so that subtitle format can
 			// include html formating
 			// TOOD we should scrub this for non-formating html
-
 			$textTarget.append(
-				$windowTarget.append(
 				$('<span />')
 					.addClass('ttmlStyled')
+					.attr('dir', captionDirection)
 					.css('pointer-events', 'auto')
 					.css(this.getCaptionCss())
 					.append(
@@ -696,7 +733,6 @@
 							.css('position', 'relative')
 							.html(caption.content)
 					)
-				)
 			);
 
 			// Add/update the lang option
@@ -724,7 +760,7 @@
 			);
 
 			// Update the style of the text object if set
-			if (caption.styleId) {
+			if (caption.styleId && !this.customStyle) {
 				var capCss = source.getStyleCssById(caption.styleId);
 				$textTarget.find('span.ttmlStyled').css(
 					capCss
@@ -778,8 +814,7 @@
 				'left': 0,
 				'top': 0,
 				'bottom': 0,
-				'right': 0,
-				'position': 'absolute'
+				'right': 0
 			};
 
 			if( $captionsOverlayTarget.length == 0 ){
@@ -825,10 +860,11 @@
 				'width' :  _this.embedPlayer.getInterface().width(),
 				'height' : _this.embedPlayer.getInterface().height()
 			}) / 100 ) *  mw.getConfig( 'TimedText.BelowVideoBlackBoxHeight' );
-			$cc.css( 'height',  height + 'px')
-			
+			$cc.css( 'height',  height + 'px');
 			// update embedPlayer layout per updated caption container size.
+			this.updateLayoutEventFired = true;
 			 _this.embedPlayer.doUpdateLayout();
+			this.updateLayoutEventFired = false;
 		},		
 		/**
 		 * Gets a text size percent relative to about 30 columns of text for 400
@@ -847,51 +883,125 @@
 			if( textSize < 95 ){
 				textSize = 95;
 			}
-			if( textSize > 150 ){
-				textSize = 150;
+			if( textSize > 200 ){
+				textSize = 200;
 			}
 			return textSize;
-		},		
+		},
 		getCaptionCss: function() {
-			var style = {'display': 'inline'};
+			var style;
 
-			if(!this.customStyle) {
-				if (this.getConfig('bg')) {
-					style["background-color"] = mw.getHexColor(this.getConfig('bg'));
-				}
-				if (this.getConfig('fontColor')) {
-					style["color"] = mw.getHexColor(this.getConfig('fontColor'));
-				}
-				if (this.getConfig('fontFamily')) {
-					style["font-family"] = this.getConfig('fontFamily');
-				}
-				if (this.getConfig('fontsize')) {
-					// Translate to em size so that font-size parent percentage
-					// base on http://pxtoem.com/
-					var emFontMap = {
-						'6': .5, '7': .583, '8': .666, '9': .75, '10': .833, '11': .916,
-						'12': 1, '13': 1.083, '14': 1.166, '15': 1.25, '16': 1.333, '17': 1.416, '18': 1.5, '19': 1.583,
-						'20': 1.666, '21': 1.75, '22': 1.833, '23': 1.916, '24': 2
-					};
-					// Make sure its an int:
-					var fontsize = parseInt(this.getConfig('fontsize'));
-					style["font-size"] = ( emFontMap[fontsize] ) ?
-					emFontMap[fontsize] + 'em' :
-						(  fontsize > 24 ) ? emFontMap[24] + 'em' : emFontMap[6];
-				}
-				if (this.getConfig('useGlow') && this.getConfig('glowBlur') && this.getConfig('glowColor')) {
-					var hShadow = this.getConfig('hShadow') ? this.getConfig('hShadow') : 0;
-					var vShadow = this.getConfig('vShadow') ? this.getConfig('vShadow') : 0;
-					style["text-shadow"] = hShadow + 'px ' + vShadow + 'px ' + this.getConfig('glowBlur') + 'px ' + mw.getHexColor(this.getConfig('glowColor'));
-				}
+			if (this.customStyle) {
+				style = this.getCustomCaptionCss();
+			} else if (this.embedPlayer.playerConfig.layout.skin === "ott"){
+				style = this.getOttCaptionCss();
 			} else {
-				style["font-family"] = this.customStyle.fontFamily;
-				style["color"] = this.customStyle.fontColor;
-				style["font-size"] = this.customStyle.fontSize;
-				style["background-color"] = this.customStyle.backgroundColor;
-				style["text-shadow"] = this.customStyle.edgeStyle;
+				style = this.getDefaultCaptionCss();
+			}
+
+			return style;
+		},
+		getOttCaptionCss: function(){
+			var style = {};
+			style["display"] = "inline";
+			style["color"] = "white";
+			style["font-size"] = this.getEmFromFontSize(22);
+			style["text-shadow"] = "0px 1px 5px #000000";
+			style["text-align"] = "center";
+			style["background"] = "none";
+			return style;
+		},
+		/*
+		* TODO: Make a function to map between those properties, something like this:
+		* https://github.com/jquery/jquery/blob/master/src/core.js#L293
+		*/
+		getCssFromJson: function(cvaaCss) {
+			var style = "video::cue {"
+			for (var key in cvaaCss) {
+				switch (key) {
+					case "fontFamily":
+						style += "font-family" + ": " + cvaaCss[key] + "; ";
+						break;
+					case "fontColor":
+						style += "color" + ": " + cvaaCss[key] + "; ";
+						break;
+					case "fontSize":
+						style += "font-size" + ": " + cvaaCss[key] + "; ";
+						break;
+					case "backgroundColor":
+						style += "background-color" + ": " + cvaaCss[key] + " !important;";
+						break;
+					case "edgeStyle":
+						style += "text-shadow" + ": " + cvaaCss[key] + "; ";
+						break;
+				}
+			}
+			style += "}";
+			return style;
+		},
+		getDefaultCaptionCss: function(){
+			var style = {};
+			style["display"] = "inline";
+			if (this.getConfig('bg')) {
+				style["background-color"] = mw.getHexColor(this.getConfig('bg'));
+			}
+			if (this.getConfig('fontColor')) {
+				style["color"] = mw.getHexColor(this.getConfig('fontColor'));
+			}
+			if (this.getConfig('fontFamily')) {
+				style["font-family"] = this.getConfig('fontFamily');
+			}
+			if (this.getConfig('fontsize')) {
+				// Translate to em size so that font-size parent percentage
+				// base on http://pxtoem.com/
+
+				// Make sure its an int:
+				var fontsize = parseInt(this.getConfig('fontsize'));
+				style["font-size"] = this.getEmFromFontSize(fontsize);
+			}
+			if (this.getConfig('useGlow') && this.getConfig('glowBlur') && this.getConfig('glowColor')) {
+				var hShadow = this.getConfig('hShadow') ? this.getConfig('hShadow') : 0;
+				var vShadow = this.getConfig('vShadow') ? this.getConfig('vShadow') : 0;
+				style["text-shadow"] = hShadow + 'px ' + vShadow + 'px ' + this.getConfig('glowBlur') + 'px ' + mw.getHexColor(this.getConfig('glowColor'));
 			}
 			return style;
+		},
+		getCustomCaptionCss: function(){
+			var style = {};
+			style["display"] = "inline";
+			style["font-family"] = this.customStyle.fontFamily;
+			style["color"] = this.customStyle.fontColor;
+			style["font-size"] = this.customStyle.fontSize;
+			style["background-color"] = this.customStyle.backgroundColor;
+			style["text-shadow"] = this.customStyle.edgeStyle;
+			return style;
+		},
+		getEmFromFontSize: function(fontsize){
+			var emFontMap = {
+				'6': .5,
+				'7': .583,
+				'8': .666,
+				'9': .75,
+				'10': .833,
+				'11': .916,
+				'12': 1,
+				'13': 1.083,
+				'14': 1.166,
+				'15': 1.25,
+				'16': 1.333,
+				'17': 1.416,
+				'18': 1.5,
+				'19': 1.583,
+				'20': 1.666,
+				'21': 1.75,
+				'22': 1.833,
+				'23': 1.916,
+				'24': 2
+			};
+			var calculatedEm = ( emFontMap[fontsize] ) ? emFontMap[fontsize] :
+				(  fontsize > 24 ) ? emFontMap[24] : emFontMap[6];
+			return (calculatedEm+ 'em');
+
 		},
 		getDefaultStyle: function(){
 			var baseCss =  {
@@ -1012,7 +1122,7 @@
                         _this.setConfig('displayCaptions', false);
                     } else {
                         _this.setTextSource(src);
-                        _this.embedPlayer.triggerHelper("selectClosedCaptions", src.label);
+                        _this.embedPlayer.triggerHelper( "selectClosedCaptions", [ src.label, src.srclang ] );
                         _this.getActiveCaption();
                     }
                 },
@@ -1045,7 +1155,7 @@
 					'class': "cvaaOptions"
 				},
 				'callback': function(){
-					_this.getPlayer().triggerHelper(btnOptions.optionsEvent);
+					_this.getPlayer().triggerHelper(btnOptions.optionsEvent, _this.lastActiveCaption);
 				},
 				'active': false
 			});
@@ -1058,12 +1168,14 @@
 					.css( this.getDefaultStyle() )
 					.html( $('<div />')
 						.text( gM('mwe-timedtext-loading-text') ) );
-				source.load(function(){
-					_this.getPlayer().triggerHelper('newClosedCaptionsData' , _this.selectedSource);
-					if( _this.playbackStarted ){
-						_this.monitor();
-					}
-				});
+				if (!this.embedPlayer.casting) {
+                    source.load( function () {
+                        _this.getPlayer().triggerHelper( 'newClosedCaptionsData', _this.selectedSource );
+                        if ( _this.playbackStarted ) {
+                            _this.monitor();
+                        }
+                    } );
+                }
 			}
 
 			this.selectedSource = source;

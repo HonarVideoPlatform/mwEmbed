@@ -31,7 +31,7 @@
 					_this.onConfigChange(prop, _this.getConfig(prop));
 				}
 				if ( mw.isIE() ){
-					$(".btn").not(".playHead").css({'margin-left': 1+'px','margin-right': 1+'px'});
+					$(".btn").not(".playHead").css({'margin-left': 0.2 + 'px','margin-right': 0.2 + 'px'});
 				}
 			});
 		},
@@ -67,7 +67,7 @@
 						}else{
 							$(".btn").not(".playHead").attr("style","color: " + value + " !important; text-shadow: "+ this.getConfig('dropShadowColor') +" !important");
 							if (!this.embedPlayer.isMobileSkin()){
-								$(".btn").not(".playHead").attr("style","background-color: "+ this.getConfig('buttonsColor') +" !important");
+								$(".btn").not(".playHead").attr("style","background-color: "+ this.getConfig('buttonsColor') +" !important;" +"color: " + value + " !important; text-shadow: "+ this.getConfig('dropShadowColor') +" !important");
 							}
 							if (this.getConfig('applyToLargePlayButton')) {
 								$(".largePlayBtn ").attr("style", "color: " + value + " !important; background-color: " + this.getConfig('buttonsColor') + " !important");
@@ -82,8 +82,14 @@
 						$(".mwPlayerContainer:not(.mobileSkin)").find(".controlsContainer").attr("style","background: " + value + " !important");
 						break;
 					case 'scrubberColor':
-						$(".mwPlayerContainer:not(.mobileSkin)").find(".playHead").attr("style","background-color: " + value + " !important");
-						$(".mwPlayerContainer:not(.mobileSkin)").find(".playHead").attr("style","background:"  + value + " !important");
+						var BGC = "background-color:"  + value;
+						var BG = "background:"  + value;
+						if (!mw.isIE8()){
+							BGC += " !important";
+							BG += " !important";
+						}
+						$(".mwPlayerContainer:not(.mobileSkin)").find(".playHead").attr("style", BGC);
+						$(".mwPlayerContainer:not(.mobileSkin)").find(".playHead").attr("style", BG);
 						$(".mwPlayerContainer.mobileSkin").find(".playHead").attr("style","background: radial-gradient(ellipse at center, "  + value.replace('rgb','rgba').replace(')',',1)') + "0%," + value.replace('rgb','rgba').replace(')',',1)') + "30%," + value.replace('rgb','rgba').replace(')',',0)') + "31%," + value.replace('rgb','rgba').replace(')',',0)') +  "100% !important");
 						$(".mwPlayerContainer.mobileSkin").find(".playHead.ui-state-active").attr("style","background: radial-gradient(ellipse at center, "  + value.replace('rgb','rgba').replace(')',',1)') + "0%," + value.replace('rgb','rgba').replace(')',',1)') + "30%," + value.replace('rgb','rgba').replace(')',',0.3)') + "31%," + value.replace('rgb','rgba').replace(')',',0.3)') +  "100% !important");
 						break;
@@ -103,13 +109,13 @@
 						if (value == true){
 							$(".btn").not(".playHead").attr("style","color: "+ this.getConfig('buttonsIconColor') +" !important; text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8) !important");
 							if (!this.embedPlayer.isMobileSkin()){
-								$(".btn").not(".playHead").attr("style","background-color: "+ this.getConfig('buttonsColor') +" !important");
+								$(".btn").not(".playHead").attr("style","background-color: " + this.getConfig('buttonsColor') + " !important; color: "+ this.getConfig('buttonsIconColor') +" !important; text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8) !important");
 							}
 							this.dropShadowColor = '1px 1px 1px rgba(0, 0, 0, 0.8)';
 						}else{
 							$(".btn").not(".playHead").attr("style","color: "+ this.getConfig('buttonsIconColor') +" !important; text-shadow: 0px 0px 0px rgba(0, 0, 0, 0) !important");
 							if (!this.embedPlayer.isMobileSkin()){
-								$(".btn").not(".playHead").attr("style","background-color: "+ this.getConfig('buttonsColor') +" !important");
+								$(".btn").not(".playHead").attr("style","background-color: " + this.getConfig('buttonsColor') + " !important; color: "+ this.getConfig('buttonsIconColor') +" !important; text-shadow: 0px 0px 0px rgba(0, 0, 0, 0) !important");
 							}
 							this.dropShadowColor = '0px 0px 0px rgba(0, 0, 0, 0)';
 						}
