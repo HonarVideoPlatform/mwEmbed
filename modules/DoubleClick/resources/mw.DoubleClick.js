@@ -936,7 +936,7 @@
 			mw.log( 'DoubleClick:: onAdsManagerLoaded' );
 
 			var adsRenderingSettings = new google.ima.AdsRenderingSettings();
-			if (!this.getConfig("adTagUrl")){
+			if (!this.adTagUrl){
 				adsRenderingSettings.restoreCustomPlaybackStateOnAdBreakComplete = true; // for manual VAST, get the SDK to restore the player
 			}
 			if ( this.getConfig( 'enableCountDown' ) === true){
@@ -974,11 +974,7 @@
 						var companionAds = [];
 
 						try {
-							var selectionCriteria = new google.ima.CompanionAdSelectionSettings();
-							selectionCriteria.resourceType = google.ima.CompanionAdSelectionSettings.ResourceType.STATIC;
-							selectionCriteria.creativeType = google.ima.CompanionAdSelectionSettings.CreativeType.IMAGE;
-							selectionCriteria.sizeCriteria = google.ima.CompanionAdSelectionSettings.SizeCriteria.IGNORE;
-							companionAds = ad.getCompanionAds(adSlotWidth, adSlotHeight, selectionCriteria);
+							companionAds = ad.getCompanionAds(adSlotWidth, adSlotHeight, {resourceType: google.ima.CompanionAdSelectionSettings.ResourceType.STATIC, creativeType: google.ima.CompanionAdSelectionSettings.CreativeType.IMAGE});
 						} catch(e) {
 							mw.log("Error: DoubleClick could not access getCompanionAds");
 						}
@@ -1676,11 +1672,11 @@
 		destroy:function(){
 			// remove any old bindings:
 			var _this = this;
-			if ( this.getConfig("adTagUrl") || this.currentAdSlotType === "postroll" ){
+			if ( this.adTagUrl || this.currentAdSlotType === "postroll" ){
 				this.embedPlayer.unbindHelper( this.bindPostfix );
 			}
 			if (!this.isChromeless){
-				if ( this.getConfig("adTagUrl") && this.playingLinearAd ) {
+				if ( this.adTagUrl && this.playingLinearAd ) {
 					this.restorePlayer(true);
 				}
 				$(".ad-skip-btn").remove(); // remove skip button from the DOM
